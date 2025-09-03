@@ -1,7 +1,7 @@
 from sqlalchemy import Column, Integer, String
+from database import Base  # or wherever your Base = declarative_base() is defined
 
-
-class Customer():
+class Customer(Base):
     __tablename__ = 'customer'
     
     id = Column(Integer, primary_key=True, index=True)
