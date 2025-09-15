@@ -99,8 +99,6 @@ def get_db():
     finally:
         db.close()
 
-
-
 @app.post("/login", response_model=ApiResponse, status_code=status.HTTP_200_OK)
 async def login(user_data: UserLogin, db: Session = Depends(get_db)):
     # In a real application, you would:
