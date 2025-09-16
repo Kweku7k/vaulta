@@ -4,7 +4,7 @@ from jinja2 import Environment, FileSystemLoader
 import os
 import random
 
-resend.api_key = "re_CJCGn5Mk_CRLAg54vTBRx18qfF8VGQMf6"
+resend.api_key = os.getenv('RESEND_API_KEY')
 
 # Load templates from the `templates` folder
 env = Environment(loader=FileSystemLoader("templates"))

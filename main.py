@@ -1,3 +1,4 @@
+import os
 from fastapi import FastAPI, HTTPException, Depends, Header, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
@@ -17,10 +18,12 @@ import models
 from sqlalchemy.orm import Session
 
 
-from services import get_customer_by_email, send_otp_to_email_for_login
+from services import get_customer_by_email, issue_jwt_token, send_otp_to_email_for_login
 from utils import generate_otp, send_email
 from fastapi import Body
 import hashlib
+import jwt
+from fastapi.security import OAuth2PasswordBearer
 
 app = FastAPI()
 
@@ -221,25 +224,47 @@ async def verify_otp(body: VerifyOtpBody, db: Session = Depends(get_db)):
     # 4) Success: clear OTP, optionally rotate the token or upgrade session
     print(f"OTP verified for user {user_id}. Clearing OTP...")
     authstore.clear_user_otp(user_id)
+    
     # Optionally: issue a longer-lived JWT here and/or revoke the short-lived token.
-
+    # JWT settings
+    jwt_response = issue_jwt_token(user_id)
+    print("==jwt_response==")
+    print(jwt_response)
+    
     print("OTP verification successful")
-    return {"message": "OTP verified", "user_id": user_id}
+    # return {"message": "OTP verified", "user_id": user_id}
+    return jwt_response
 
+oauth2_scheme = OAuth2PasswordBearer(tokenUrl="login")
 
-@app.post("/email")
-def send_mail() -> Dict:
-    
-    resend.api_key = "re_CJCGn5Mk_CRLAg54vTBRx18qfF8VGQMf6"
-    
-    params: resend.Emails.SendParams = {
-        "from": "onboarding@resend.dev",
-        "to": ["delivered@resend.dev"],
-        "subject": "Hello World",
-        "html": "<strong>it works!</strong>",
+@app.get("/account", response_model=UserResponse)
+async def get_account(token: str = Depends(oauth2_scheme), db: Session = Depends(get_db)):
+    print("Decoding JWT token...")
+    try:
+        payload = jwt.decode(token, os.getenv("JWT_SECRET", "your_jwt_secret"), algorithms=["HS256"])
+        print("JWT payload:", payload)
+        user_id = payload.get("sub")
+        print("Extracted user_id from token:", user_id)
+        if not user_id:
+            print("Invalid token: user_id missing")
+            raise HTTPException(status_code=401, detail="Invalid token")
+    except jwt.PyJWTError as e:
+        print("JWT decode error:", str(e))
+        raise HTTPException(status_code=401, detail="Invalid token")
+
+    print("Querying user from database with user_id:", user_id)
+    user = db.query(models.User).filter(models.User.id == user_id).first()
+    if not user:
+        print("User not found for user_id:", user_id)
+        raise HTTPException(status_code=404, detail="User not found")
+    print("User found:", user)
+    return {
+        "id": str(user.id),
+        "first_name": user.first_name,
+        "last_name": user.last_name,
+        "email": user.email,
+        "phone": user.phone
     }
-    email: resend.Email = resend.Emails.send(params)
-    return email
 
 
 @app.post("/register", response_model=UserResponse, status_code=status.HTTP_201_CREATED)
@@ -293,78 +318,6 @@ async def register(user_data: UserCreate, db: Session = Depends(get_db)):
         "phone": new_customer.phone
     }
 
-@app.post("/forgot-password", response_model=OTPResponse)
-async def forgot_password(request: ForgotPasswordRequest):
-    # Check if email exists
-    if request.email not in users_db:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Email not found"
-        )
-    
-    # Generate a 6-digit OTP
-    otp = ''.join([str(random.randint(0, 9)) for _ in range(6)])
-    
-    # Set expiration time (10 minutes)
-    expiry = datetime.now() + timedelta(minutes=10)
-    
-    # Store OTP with expiration
-    otp_store[request.email] = {
-        "otp": otp,
-        "expiry": expiry
-    }
-    
-    # In a real app, send the OTP via email
-    # For demo purposes, we'll return it directly
-    return {
-        "otp": otp,
-        "expires_in": 600  # 10 minutes in seconds
-    }
-
-@app.post("/reset-password", status_code=status.HTTP_200_OK)
-async def reset_password(request: ResetPasswordRequest):
-    # Check if email exists
-    if request.email not in users_db:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Email not found"
-        )
-    
-    # Check if OTP exists for this email
-    if request.email not in otp_store:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="No OTP requested for this email"
-        )
-    
-    # Get stored OTP data
-    otp_data = otp_store[request.email]
-    
-    # Check if OTP has expired
-    if datetime.now() > otp_data["expiry"]:
-        # Remove expired OTP
-        del otp_store[request.email]
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="OTP has expired"
-        )
-    
-    # Verify OTP
-    if request.otp != otp_data["otp"]:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Invalid OTP"
-        )
-    
-    # Update password
-    users_db[request.email]["password"] = request.new_password
-    
-    # Remove used OTP
-    del otp_store[request.email]
-    
-    return {"message": "Password reset successful"}
-
 @app.get("/")
 async def root():
     return {"message":"Hello!"}
-

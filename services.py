@@ -1,3 +1,7 @@
+from datetime import datetime, timedelta
+import os
+
+import jwt
 from db.models import Customer
 from models import User
 from utils import generate_otp, send_email
@@ -44,3 +48,19 @@ def send_otp_to_email_for_login(user, db):
     # This function should send an OTP to the user's email for login
     # For now, let's just return a mock response
     return {"status": "success", "message": "OTP sent to email"}
+
+def issue_jwt_token(user_id):
+    SECRET_KEY = os.getenv('JWT_SECRET')
+    ALGORITHM = "HS256"
+    ACCESS_TOKEN_EXPIRE_MINUTES = 60
+
+    # Create JWT token
+    expire = datetime.now() + timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
+    jwt_payload = {
+        "sub": user_id,
+        "exp": expire
+    }
+    
+    jwt_token = jwt.encode(jwt_payload, SECRET_KEY, algorithm=ALGORITHM)
+
+    return {"message": "OTP verified", "user_id": user_id, "jwt_token": jwt_token}
