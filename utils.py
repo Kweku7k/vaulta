@@ -1,4 +1,5 @@
 from pprint import pprint
+import requests
 import resend
 from jinja2 import Environment, FileSystemLoader
 import os
@@ -41,4 +42,29 @@ def send_email(template, subject, to, context):
 def generate_otp():
     otp = str(random.randint(100000, 999999))
     return otp
+
+def send_slack(message):
+    # check to see if slack messaging is allowed
+    # if os.getenv("ALLOW_SLACK_MESSAGING") == "False":
+    #     return ApiResponse(data=None, message="Slack messaging is not allowed", code=response.status_code, status="Undelivered", success=False)
+    try:
+        slack_data = {'text': message}
+        # Send the message to Slack
+        response = requests.post("https://hooks.slack.com/services/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", json=slack_data)
+        return response
+    except Exception as e:
+        print(e)
+        return False
     
+def send_private_slack(message):
+    # check to see if slack messaging is allowed
+    # if os.getenv("ALLOW_SLACK_MESSAGING") == "False":
+    #     return ApiResponse(data=None, message="Slack messaging is not allowed", code=response.status_code, status="Undelivered", success=False)
+    try:
+        slack_data = {'text': message}
+        # Send the message to Slack
+        response = requests.post("https://hooks.slack.com/services/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", json=slack_data)
+        return response
+    except Exception as e:
+        print(e)
+        return False
