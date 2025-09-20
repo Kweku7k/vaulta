@@ -1,1 +1,1 @@
-OVEX_BASE_URL="https://"
+OVEX_BASE_URL="https://www.ovex.io/api/v2"

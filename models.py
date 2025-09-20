@@ -25,6 +25,8 @@ class User(Base):
     email = Column(String, unique=True, index=True)
     phone = Column(String)
     password = Column(String)
+    # usermetadata = Column(String, nullable=True)
+    # user_meta_data = Column(String, nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
 
@@ -36,3 +38,13 @@ class OTP(Base):
     otp = Column(String)
     expiry = Column(DateTime(timezone=True))
     created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+    class ApiKey(Base):
+        __tablename__ = "api_keys"
+
+        id = Column(Integer, primary_key=True, index=True)
+        key = Column(String, unique=True, index=True, nullable=False)
+        user_id = Column(String, ForeignKey("users.id"), nullable=False)
+        created_at = Column(DateTime(timezone=True), server_default=func.now())
+        expires_at = Column(DateTime(timezone=True), nullable=True)
+        is_active = Column(Boolean, default=True)

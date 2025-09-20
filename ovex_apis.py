@@ -3,10 +3,12 @@
 from datetime import time
 import hashlib
 import hmac
+import json
 import os
 from dotenv import load_dotenv
 import requests
 from variables import OVEX_BASE_URL
+import time
 
 load_dotenv() 
 
@@ -48,32 +50,39 @@ def place_order(data):
     }
     
 def create_quote(data):
-    # data = request.get_json(force=True)
-    pair = data.get('pair')           # e.g. "BTC-GHS"
+    pair = data.get('pair')           # e.g. "BTC-ZAR"
     side = data.get('side')           # "buy" | "sell"
     amount_crypto = data.get('amount_crypto')
     amount_fiat   = data.get('amount_fiat')
+    prefunded     = data.get('prefunded', 0)
 
-    if not pair or side not in ("buy","sell"):
+    if not pair or side not in ("buy", "sell"):
         return ("Invalid pair/side", 400)
 
-    payload = {
-        "pair": pair,
+    # Convert pair to market format (e.g. "BTC-ZAR" -> "btczar")
+    market = pair.replace("-", "").lower()
+
+    # Use from_amount for crypto, else fiat
+    from_amount = amount_crypto if amount_crypto else amount_fiat
+    if not from_amount:
+        return ("Missing amount", 400)
+
+    path = "/rfq/get_quote"
+    url = f"{OVEX_BASE_URL}{path}"
+    params = {
+        "market": market,
+        "from_amount": str(from_amount),
         "side": side,
-        # Many quote APIs accept exactly one of these. Send whichever the user filled.
-        **({"amount_crypto": str(amount_crypto)} if amount_crypto else {}),
-        **({"amount_fiat": str(amount_fiat)} if amount_fiat else {}),
+        "prefunded": str(prefunded)
     }
 
-    path = "/quotes"
-    url = OVEX_BASE_URL + path
-    res = requests.post(url, json=payload, headers=auth_headers("POST", path, body=requests.utils.json.dumps(payload)))
+    res = requests.get(url, params=params, headers=auth_headers("GET", path))
 
     if res.status_code >= 300:
         return (res.text, res.status_code)
 
-    # Normalize response to the front‑end shape
     r = res.json()
+    
     return {
         "quote_id": r.get("id") or r.get("quote_id"),
         "price": r.get("price") or r.get("rate"),
@@ -83,3 +92,14 @@ def create_quote(data):
         "amount_fiat": r.get("amount_fiat") or r.get("amount_quote"),
         "expires_at": r.get("expires_at") or r.get("expiry")
     }
+    
+def get_markets():
+    path = "/markets"
+    url = f"{OVEX_BASE_URL}{path}"
+    res = requests.get(url, headers=auth_headers("GET", path))
+    if res.status_code >= 300:
+        return (res.text, res.status_code)
+    return res.json()
+
+def get_order_status(order_id):
+    pass

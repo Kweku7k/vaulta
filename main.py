@@ -19,11 +19,15 @@ from sqlalchemy.orm import Session
 
 
 from services import get_customer_by_email, issue_jwt_token, send_otp_to_email_for_login
-from utils import generate_otp, send_email
+from utils import generate_otp, send_email, send_slack, send_private_slack
 from fastapi import Body
 import hashlib
 import jwt
 from fastapi.security import OAuth2PasswordBearer
+
+from ovex_apis import create_quote
+from ovex_apis import get_markets
+
 
 app = FastAPI()
 
@@ -71,7 +75,22 @@ class UserResponse(BaseModel):
     last_name: str
     email: EmailStr
     phone: str
+    dashboard:dict
 
+class QuoteResponse(BaseModel):
+    quote_id: str
+    pair: str
+    side: str
+    amount_crypto: Optional[str]
+    amount_fiat: Optional[str]
+    price: str
+    expires_at: datetime
+
+class QuoteRequest(BaseModel):
+    pair: str           # e.g. "BTC-GHS"
+    side: str           # "buy" | "sell"
+    amount_crypto: Optional[float] = None
+    amount_fiat: Optional[float] = None
 
 class Token(BaseModel):
     access_token: str
@@ -162,7 +181,6 @@ async def login(user_data: UserLogin, db: Session = Depends(get_db)):
     )
     # return ApiResponse(message = "User was not found", code=404, data={"access_token": token, "token_type": "bearer"}, status="Failed")
 
-
 #verify the otp
 class VerifyOTPRequest(BaseModel):
     email: EmailStr
@@ -193,6 +211,11 @@ async def verify_otp(body: VerifyOtpBody, db: Session = Depends(get_db)):
     # 2) Lookup user_id in Redis
     user_id = authstore.get_user_id_from_token(token)
     print(f"User ID from token: {user_id}")
+    
+    user = authstore.get_user_by_id(user_id)
+    print("===user===")
+    print(user)
+    
     if not user_id:
         print("Invalid or expired access token")
         raise HTTPException(status_code=401, detail="Invalid or expired access token")
@@ -209,7 +232,6 @@ async def verify_otp(body: VerifyOtpBody, db: Session = Depends(get_db)):
     # If stored in Redis:
     # expected_otp = user.otp
     # If stored in DB instead:
-    
     
     # if you stored it in Redis
     print(f"Expected OTP for user {user_id}: {expected_otp}")
@@ -231,6 +253,8 @@ async def verify_otp(body: VerifyOtpBody, db: Session = Depends(get_db)):
     print("==jwt_response==")
     print(jwt_response)
     
+    jwt_response['user'] = user
+
     print("OTP verification successful")
     # return {"message": "OTP verified", "user_id": user_id}
     return jwt_response
@@ -254,18 +278,58 @@ async def get_account(token: str = Depends(oauth2_scheme), db: Session = Depends
 
     print("Querying user from database with user_id:", user_id)
     user = db.query(models.User).filter(models.User.id == user_id).first()
+    
     if not user:
         print("User not found for user_id:", user_id)
         raise HTTPException(status_code=404, detail="User not found")
     print("User found:", user)
+    
     return {
         "id": str(user.id),
         "first_name": user.first_name,
         "last_name": user.last_name,
         "email": user.email,
-        "phone": user.phone
+        "phone": user.phone,
+        "dashboard":{
+            "wallet_balance":"39",
+            "currency_pair_1":{
+                "label":"USDT",
+                "value":"1",
+                "subvalue":"1"
+            },
+            "currency_pair_2":{
+                "label":"GHS",
+                "value":"1",
+                "subvalue":"1"
+            },
+            "summary":
+            [
+                {
+                "Pending Approval":"1",
+                },
+                {   
+                "Risk Alert":"0",
+                },
+                {   
+                "Flagged Transactions":"1"
+                }
+            ],
+            "recent_transactions":[
+                {
+                    "name":"Received USDT",
+                    "date":"2024-06-01",
+                    "amount":"$1000",
+                    "status":"Completed"
+                },
+                {
+                    "name":"Sent GHS",
+                    "date":"2024-06-02",
+                    "amount":"GHS 500",
+                    "status":"Pending"
+                }
+            ]
+        }
     }
-
 
 @app.post("/register", response_model=UserResponse, status_code=status.HTTP_201_CREATED)
 async def register(user_data: UserCreate, db: Session = Depends(get_db)):
@@ -284,7 +348,6 @@ async def register(user_data: UserCreate, db: Session = Depends(get_db)):
     
     user_id = secrets.token_hex(8)
     print("Generated user ID:", user_id)
-    
     
     new_customer = models.User(
         id = user_id,
@@ -321,3 +384,119 @@ async def register(user_data: UserCreate, db: Session = Depends(get_db)):
 @app.get("/")
 async def root():
     return {"message":"Hello!"}
+
+@app.post("/api/v1/get_quote")
+async def create_quote_route(data: QuoteRequest, db:Session = Depends(get_db)):
+    
+    # USDT -> GHS = SELL
+    # GHS -> USDT = BUY
+    
+    print("==data==")
+    print(data)
+    
+    response = create_quote(data.model_dump())
+    
+    print("==response==")
+    print(response)
+    
+    if isinstance(response, tuple) and len(response) == 2 and isinstance(response[1], int):
+        # This is an error response
+        raise HTTPException(status_code=response[1], detail=response[0])
+    
+    return response
+
+@app.get("/api/v1/pairs")
+async def get_markets_route():
+    markets = get_markets()
+    filtered_markets = [m['name'].replace("/","-") for m in markets]
+    return {"markets": filtered_markets}
+    
+@app.get("/api/v1/cron_rates")
+async def get_todays_cron_rates():
+    pair = "USDT-GHS" 
+    side = "sell"
+    
+    quote = create_quote(
+        {
+            "pair": pair,
+            "side": side,
+            "amount_crypto": 0.001
+        }
+        )
+    
+    print(quote)
+    message = f"{datetime.now().strftime('%c')}\nSIDE: {side}\n{pair}: {quote['price']}"
+    send_private_slack(message)
+    return quote        
+
+class ApiKeyResponse(BaseModel):
+    api_key: str
+    expires_at: datetime
+
+@app.post("/api/v1/create_api_key", response_model=ApiKeyResponse)
+async def create_api_key(token: str = Depends(oauth2_scheme), db: Session = Depends(get_db)):
+    try:
+        payload = jwt.decode(token, os.getenv("JWT_SECRET", "your_jwt_secret"), algorithms=["HS256"])
+        user_id = payload.get("sub")
+        if not user_id:
+            raise HTTPException(status_code=401, detail="Invalid token")
+    except jwt.PyJWTError:
+        raise HTTPException(status_code=401, detail="Invalid token")
+
+    # Generate a new API key
+    api_key = secrets.token_urlsafe(32)
+    expires_at = datetime.now() + timedelta(days=30)
+
+    # Store API key in DB (assuming models.ApiKey exists)
+    api_key_obj = models.ApiKey(
+        key=api_key,
+        user_id=user_id,
+        expires_at=expires_at
+    )
+    db.add(api_key_obj)
+    db.commit()
+    db.refresh(api_key_obj)
+
+    return ApiKeyResponse(api_key=api_key, expires_at=expires_at)
+
+
+@app.delete("/api/v1/delete_api_key/{api_key}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_api_key(api_key: str, token: str = Depends(oauth2_scheme), db: Session = Depends(get_db)):
+    try:
+        payload = jwt.decode(token, os.getenv("JWT_SECRET", "your_jwt_secret"), algorithms=["HS256"])
+        user_id = payload.get("sub")
+        if not user_id:
+            raise HTTPException(status_code=401, detail="Invalid token")
+    except jwt.PyJWTError:
+        raise HTTPException(status_code=401, detail="Invalid token")
+
+    api_key_obj = db.query(models.ApiKey).filter(models.ApiKey.key == api_key, models.ApiKey.user_id == user_id).first()
+    if not api_key_obj:
+        raise HTTPException(status_code=404, detail="API key not found")
+
+    db.delete(api_key_obj)
+    db.commit()
+    return
+
+class ToggleApiKeyRequest(BaseModel):
+    api_key: str
+    active: bool
+
+@app.post("/api/v1/toggle_api_key")
+async def toggle_api_key_status(body: ToggleApiKeyRequest, token: str = Depends(oauth2_scheme), db: Session = Depends(get_db)):
+    try:
+        payload = jwt.decode(token, os.getenv("JWT_SECRET", "your_jwt_secret"), algorithms=["HS256"])
+        user_id = payload.get("sub")
+        if not user_id:
+            raise HTTPException(status_code=401, detail="Invalid token")
+    except jwt.PyJWTError:
+        raise HTTPException(status_code=401, detail="Invalid token")
+
+    api_key_obj = db.query(models.ApiKey).filter(models.ApiKey.key == body.api_key, models.ApiKey.user_id == user_id).first()
+    if not api_key_obj:
+        raise HTTPException(status_code=404, detail="API key not found")
+
+    api_key_obj.active = body.active
+    db.commit()
+    db.refresh(api_key_obj)
+    return {"api_key": api_key_obj.key, "active": api_key_obj.active}
