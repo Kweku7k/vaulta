@@ -5,7 +5,9 @@ from sqlalchemy import pool
 
 from alembic import context
 
-from db.database import Base
+from database import Base
+import models  # <-- add this so tables register on Base.metadata
+
 
 # this is the Alembic Config object, which provides
 # access to the values within the .ini file in use.
