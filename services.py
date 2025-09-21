@@ -2,7 +2,7 @@ from datetime import datetime, timedelta
 import os
 
 import jwt
-from db.models import Customer
+from models import Customer
 from models import User
 from utils import generate_otp, send_email
 

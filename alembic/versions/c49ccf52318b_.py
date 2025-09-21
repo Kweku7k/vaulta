@@ -1,8 +1,8 @@
-"""add usermetadata
+"""empty message
 
-Revision ID: ed4b6aa2386d
-Revises: 
-Create Date: 2025-09-20 17:15:17.496399
+Revision ID: c49ccf52318b
+Revises: cf5676f5cdff
+Create Date: 2025-09-20 23:38:10.741320
 
 """
 from typing import Sequence, Union
@@ -12,19 +12,17 @@ import sqlalchemy as sa
 
 
 # revision identifiers, used by Alembic.
-revision: str = 'ed4b6aa2386d'
-down_revision: Union[str, Sequence[str], None] = None
+revision: str = 'c49ccf52318b'
+down_revision: Union[str, Sequence[str], None] = 'cf5676f5cdff'
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 
 
 def upgrade() -> None:
     """Upgrade schema."""
-    op.add_column(
-        "users",
-        sa.Column('usermetadata', sa.String(255), nullable=True)
-    )
+    pass
+
 
 def downgrade() -> None:
     """Downgrade schema."""
-    op.drop_column("users","usermetadata")
+    pass

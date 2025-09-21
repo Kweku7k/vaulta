@@ -308,7 +308,7 @@ async def get_account(token: str = Depends(oauth2_scheme), db: Session = Depends
                 "Pending Approval":"1",
                 },
                 {   
-                "Risk Alert":"0",
+                "Risk Alert":"7",
                 },
                 {   
                 "Flagged Transactions":"1"
@@ -378,7 +378,8 @@ async def register(user_data: UserCreate, db: Session = Depends(get_db)):
         "first_name": new_customer.first_name,
         "last_name": new_customer.last_name,
         "email": new_customer.email,
-        "phone": new_customer.phone
+        "phone": new_customer.phone,
+        "dashboard":{}
     }
 
 @app.get("/")
@@ -459,6 +460,27 @@ async def create_api_key(token: str = Depends(oauth2_scheme), db: Session = Depe
 
     return ApiKeyResponse(api_key=api_key, expires_at=expires_at)
 
+@app.get("/api/v1/api_keys")
+async def get_api_keys(token: str = Depends(oauth2_scheme), db: Session = Depends(get_db)):
+    try:
+        payload = jwt.decode(token, os.getenv("JWT_SECRET", "your_jwt_secret"), algorithms=["HS256"])
+        user_id = payload.get("sub")
+        if not user_id:
+            raise HTTPException(status_code=401, detail="Invalid token")
+    except jwt.PyJWTError:
+        raise HTTPException(status_code=401, detail="Invalid token")
+
+    api_keys = db.query(models.ApiKey).filter(models.ApiKey.user_id == user_id).all()
+    result = [
+        {
+            "api_key": key.key,
+            "expires_at": key.expires_at,
+            "active": key.is_active
+        }
+        for key in api_keys
+    ]
+    return {"api_keys": result}
+
 
 @app.delete("/api/v1/delete_api_key/{api_key}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_api_key(api_key: str, token: str = Depends(oauth2_scheme), db: Session = Depends(get_db)):
@@ -500,3 +522,119 @@ async def toggle_api_key_status(body: ToggleApiKeyRequest, token: str = Depends(
     db.commit()
     db.refresh(api_key_obj)
     return {"api_key": api_key_obj.key, "active": api_key_obj.active}
+
+@app.get("/api/v1/transactions")
+async def get_all_transactions(token: str = Depends(oauth2_scheme), db: Session = Depends(get_db)):
+    try:
+        payload = jwt.decode(token, os.getenv("JWT_SECRET", "your_jwt_secret"), algorithms=["HS256"])
+        user_id = payload.get("sub")
+        if not user_id:
+            raise HTTPException(status_code=401, detail="Invalid token")
+    except jwt.PyJWTError:
+        raise HTTPException(status_code=401, detail="Invalid token")
+
+    # transactions = db.query(models.Transaction).filter(models.Transaction.user_id == user_id).all()
+    # result = [
+    #     {
+    #         "id": str(tx.id),
+    #         "amount": tx.amount,
+    #         "currency": tx.currency,
+    #         "type": tx.type,
+    #         "status": tx.status,
+    #         "created_at": tx.created_at
+    #     }
+    #     for tx in transactions
+    # ]
+    
+    result = [
+        {
+            "id": "4902d0rw283d",
+            "amount": "20000",
+            "currency": "GHC",
+            "type": "CREDIT",
+            "status": "PENDING",
+            "created_at": 12-12-2025
+        },
+        {
+            "id": "4902d0rw283d",
+            "amount": "80000",
+            "currency": "GHC",
+            "type": "CREDIT",
+            "status": "PENDING",
+            "created_at": 12-12-2025
+        },
+        {
+            "id": "4902d0rw283d",
+            "amount": "62000",
+            "currency": "USDT",
+            "type": "CREDIT",
+            "status": "SUCCESSFUL",
+            "created_at": 12-12-2025
+        }
+    ]
+    return result
+
+class CreateTransactionRequest(BaseModel):
+    amount: float
+    currency: str
+    type: str  # e.g. "deposit", "withdrawal"
+    status: Optional[str] = "pending"
+
+@app.post("/api/v1/create_transactions", status_code=status.HTTP_201_CREATED)
+async def create_transaction(
+    data: CreateTransactionRequest,
+    token: str = Depends(oauth2_scheme),
+    db: Session = Depends(get_db)
+):
+    try:
+        payload = jwt.decode(token, os.getenv("JWT_SECRET", "your_jwt_secret"), algorithms=["HS256"])
+        user_id = payload.get("sub")
+        if not user_id:
+            raise HTTPException(status_code=401, detail="Invalid token")
+    except jwt.PyJWTError:
+        raise HTTPException(status_code=401, detail="Invalid token")
+
+    transaction = models.Transaction(
+        user_id=user_id,
+        amount=data.amount,
+        currency=data.currency,
+        type=data.type,
+        status=data.status,
+        created_at=datetime.now()
+    )
+    db.add(transaction)
+    db.commit()
+    db.refresh(transaction)
+    return {
+        "id": str(transaction.id),
+        "amount": transaction.amount,
+        "currency": transaction.currency,
+        "type": transaction.type,
+        "status": transaction.status,
+        "created_at": transaction.created_at
+    }
+
+@app.delete("/api/v1/transactions/{transaction_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_transaction(
+    transaction_id: str,
+    token: str = Depends(oauth2_scheme),
+    db: Session = Depends(get_db)
+):
+    try:
+        payload = jwt.decode(token, os.getenv("JWT_SECRET", "your_jwt_secret"), algorithms=["HS256"])
+        user_id = payload.get("sub")
+        if not user_id:
+            raise HTTPException(status_code=401, detail="Invalid token")
+    except jwt.PyJWTError:
+        raise HTTPException(status_code=401, detail="Invalid token")
+
+    transaction = db.query(models.Transaction).filter(
+        models.Transaction.id == transaction_id,
+        models.Transaction.user_id == user_id
+    ).first()
+    if not transaction:
+        raise HTTPException(status_code=404, detail="Transaction not found")
+
+    db.delete(transaction)
+    db.commit()
+    return
