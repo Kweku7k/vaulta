@@ -64,3 +64,25 @@ def issue_jwt_token(user_id):
     jwt_token = jwt.encode(jwt_payload, SECRET_KEY, algorithm=ALGORITHM)
 
     return {"message": "OTP verified", "user_id": user_id, "jwt_token": jwt_token}
+
+def generate_account_number():
+    """
+    Generates a unique 10-digit account number.
+    
+    Returns:
+        str: A unique 10-digit account number.
+    """
+    from database import SessionLocal
+    from models import Account
+    import random
+
+    db = SessionLocal()
+    
+    while True:
+        account_number = str(random.randint(10**9, 10**10 - 1))  # Generate a random 10-digit number
+        existing_account = db.query(Account).filter(Account.account_number == account_number).first()
+        if not existing_account:
+            break  # Ensure the account number is unique
+
+    db.close()
+    return account_number

@@ -10,13 +10,15 @@ from datetime import datetime, timedelta
 
 from authstore import save_access_token, save_user_otp
 
+from starlette.requests import Request
 
 import resend
 import authstore
 from database import engine, SessionLocal
+import services
+from vaulta_idempotency import IdempotencyMiddleware
 import models
 from sqlalchemy.orm import Session
-
 
 from services import get_customer_by_email, issue_jwt_token, send_otp_to_email_for_login
 from utils import generate_otp, send_email, send_slack, send_private_slack
@@ -27,10 +29,70 @@ from fastapi.security import OAuth2PasswordBearer
 
 from ovex_apis import create_quote
 from ovex_apis import get_markets
-
+from redis_client import r
 
 app = FastAPI()
 
+# Add the middleware near the top of your stack
+# app.add_middleware(
+#     IdempotencyMiddleware,
+#     redis=r,
+#     ttl_seconds=60*60*24,   # 24h retention
+#     require_header=True,    # force Idempotency-Key
+# )
+
+# def _api_key_is_enabled(key_obj) -> bool:
+#     """Return True if the key is enabled, handling either `.active` or `.is_active` fields."""
+#     return bool(getattr(key_obj, "active", getattr(key_obj, "is_active", True)))
+
+# UNPROTECTED_PATHS = {
+#     "/",                # health/root
+#     "/login",
+#     "/register",
+#     "/verify-otp",
+#     "/account",
+#     # API key management endpoints should not require an API key themselves
+#     "/api/v1/create_api_key",
+#     "/api/v1/api_keys",
+#     "/api/v1/toggle_api_key",
+#     "/api/v1/delete_api_key",  # wildcard path excluded via startswith check below
+# }
+
+# @app.middleware("http")
+# async def require_x_api_key(request: Request, call_next):
+#     path = request.url.path
+
+#     # Enforce API key for all /api/v1/* routes EXCEPT the explicitly unprotected ones.
+#     needs_key = path.startswith("/api/v1/") and not any(
+#         path == p or path.startswith(p + "/") for p in UNPROTECTED_PATHS
+#     )
+
+#     if needs_key:
+#         x_api_key = request.headers.get("x-api-key")
+#         if not x_api_key:
+#             return JSONResponse(status_code=401, content={"detail": "Missing x-api-key header"})
+
+#         db = SessionLocal()
+#         try:
+#             key_obj = db.query(models.ApiKey).filter(models.ApiKey.key == x_api_key).first()
+#             if not key_obj:
+#                 return JSONResponse(status_code=403, content={"detail": "Invalid API key"})
+
+#             # Expiry check (if present)
+#             # if getattr(key_obj, "expires_at", None) and key_obj.expires_at < datetime.now():
+#             #     return JSONResponse(status_code=403, content={"detail": "API key expired"})
+
+#             # Active/enabled check
+#             if not _api_key_is_enabled(key_obj):
+#                 return JSONResponse(status_code=403, content={"detail": "API key disabled"})
+
+#             # Optionally expose to downstream handlers
+#             request.state.api_key = x_api_key
+#             request.state.api_user_id = getattr(key_obj, "user_id", None)
+#         finally:
+#             db.close()
+
+#     return await call_next(request)
 
 
 # Add CORS middleware
@@ -423,7 +485,7 @@ async def get_todays_cron_rates():
             "side": side,
             "amount_crypto": 0.001
         }
-        )
+    )
     
     print(quote)
     message = f"{datetime.now().strftime('%c')}\nSIDE: {side}\n{pair}: {quote['price']}"
@@ -638,3 +700,161 @@ async def delete_transaction(
     db.delete(transaction)
     db.commit()
     return
+
+class CreateAccountRequest(BaseModel):
+    name: str
+    currency: str
+    metadata: Optional[dict] = None
+
+class AccountResponse(BaseModel):
+    id: str
+    name: str
+    currency: str
+    status: str
+    balances: dict
+    metadata: Optional[dict] = None
+
+@app.post("/api/v1/create_account", response_model=AccountResponse, status_code=status.HTTP_201_CREATED)
+async def create_account(
+    data: CreateAccountRequest,
+    token: str = Depends(oauth2_scheme),
+    db: Session = Depends(get_db)
+):
+    try:
+        payload = jwt.decode(token, os.getenv("JWT_SECRET", "your_jwt_secret"), algorithms=["HS256"])
+        user_id = payload.get("sub")
+        print("user_id")
+        print(user_id)
+        if not user_id:
+            raise HTTPException(status_code=401, detail="Invalidated token")
+    except jwt.PyJWTError:
+        raise HTTPException(status_code=401, detail="Invalid token")
+
+    account_id = secrets.token_hex(8)
+    account_number = services.generate_account_number()
+    account = models.Account(
+        user_id=user_id,
+        account_name=data.name,
+        account_number=account_number,
+        currency=data.currency,
+        metadata=data.metadata or {}
+    )
+    db.add(account)
+    db.commit()
+    db.refresh(account)
+    return AccountResponse(
+        id=str(account.id),
+        name=account.account_name,
+        currency=account.currency,
+        status=account.status,
+        balances=account.balances or {},
+        metadata=account.account_metadata
+    )
+
+@app.get("/api/v1/accounts", response_model=List[AccountResponse])
+async def get_all_accounts(token: str = Depends(oauth2_scheme), db: Session = Depends(get_db)):
+    try:
+        payload = jwt.decode(token, os.getenv("JWT_SECRET", "your_jwt_secret"), algorithms=["HS256"])
+        user_id = payload.get("sub")
+        if not user_id:
+            raise HTTPException(status_code=401, detail="Invalid token")
+    except jwt.PyJWTError:
+        raise HTTPException(status_code=401, detail="Invalid token")
+
+    accounts = db.query(models.Account).filter(
+        models.Account.user_id == user_id,
+        models.Account.status == "ACTIVE"
+    ).all()
+    result = [
+        AccountResponse(
+            id=str(account.id),
+            name=account.account_name,
+            currency=account.currency,
+            status=account.status,
+            balances=account.balances or {},
+            metadata=account.account_metadata
+        )
+        for account in accounts
+    ]
+    return result
+
+@app.delete("/api/v1/accounts/{account_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_account(
+    account_id: str,
+    token: str = Depends(oauth2_scheme),
+    db: Session = Depends(get_db)
+):
+    try:
+        payload = jwt.decode(token, os.getenv("JWT_SECRET", "your_jwt_secret"), algorithms=["HS256"])
+        user_id = payload.get("sub")
+        if not user_id:
+            raise HTTPException(status_code=401, detail="Invalid token")
+    except jwt.PyJWTError:
+        raise HTTPException(status_code=401, detail="Invalid token")
+
+    account = db.query(models.Account).filter(
+        models.Account.id == account_id,
+        models.Account.user_id == user_id
+    ).first()
+    if not account:
+        raise HTTPException(status_code=404, detail="Account not found")
+
+    account.status = "DELETED"
+    db.commit()
+    # Return all accounts for the user after deletion
+    accounts = db.query(models.Account).filter(
+        models.Account.user_id == user_id,
+        models.Account.status == "ACTIVE"
+    ).all()
+    result = [
+        AccountResponse(
+            id=str(account.id),
+            name=account.account_name,
+            currency=account.currency,
+            status=account.status,
+            balances=account.balances or {},
+            metadata=account.account_metadata
+        )
+        for account in accounts
+    ]
+    return result
+
+@app.put("/api/v1/accounts/{account_id}", response_model=AccountResponse)
+async def update_account(
+    account_id: str,
+    data: CreateAccountRequest,
+    token: str = Depends(oauth2_scheme),
+    db: Session = Depends(get_db)
+    ):
+    
+    try:
+        payload = jwt.decode(token, os.getenv("JWT_SECRET", "your_jwt_secret"), algorithms=["HS256"])
+        user_id = payload.get("sub")
+        if not user_id:
+            raise HTTPException(status_code=401, detail="Invalid token")
+    except jwt.PyJWTError:
+        raise HTTPException(status_code=401, detail="Invalid token")
+
+    account = db.query(models.Account).filter(
+        models.Account.id == account_id,
+        models.Account.user_id == user_id,
+        models.Account.status == "ACTIVE"
+    ).first()
+    if not account:
+        raise HTTPException(status_code=404, detail="Account not found")
+
+    account.account_name = data.name
+    account.currency = data.currency
+    account.account_metadata = data.metadata or {}
+    db.commit()
+    db.refresh(account)
+    
+    return AccountResponse(
+        id=str(account.id),
+        name=account.account_name,
+        currency=account.currency,
+        status=account.status,
+        balances=account.balances or {},
+        metadata=account.account_metadata
+    )
+    

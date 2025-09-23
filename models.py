@@ -57,7 +57,6 @@ class Transaction(Base):
     __tablename__ = "transactions"
 
     id = Column(Integer, primary_key=True, index=True)
-    customer_id = Column(Integer, ForeignKey("customer.id"), nullable=False)
     amount = Column(Integer, nullable=False)
     currency = Column(String, nullable=False)
     user_id = Column(String, nullable=False)
@@ -65,5 +64,21 @@ class Transaction(Base):
     provider = Column(String, nullable=False)  # e.g., 'deposit', 'withdrawal'
     status = Column(String, nullable=False)  # e.g., 'pending', 'completed', 'failed'
     reference = Column(String, unique=True, index=True, nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), onupdate=func.now())
+
+class Account(Base):
+    __tablename__ = "accounts"
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(String, nullable=False)
+    account_name = Column(String, index=True, nullable=False)
+    account_number = Column(String, unique=True, index=True, nullable=False)
+    account_type = Column(String, nullable=False, default="current")  # e.g., 'savings', 'checking'
+    balance = Column(Integer, default=0, nullable=False) #into cents!  
+    balances = Column(String, nullable=True)  # Store as JSON string representing a dictionary
+    account_metadata = Column(String, nullable=True)
+    currency = Column(String, nullable=False)
+    status = Column(String, nullable=False, default="ACTIVE")  # e.g., 'active', 'inactive', 'closed'
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
