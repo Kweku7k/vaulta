@@ -6,6 +6,8 @@ from pydantic import BaseModel, EmailStr
 from typing import Dict, List, Annotated, Optional
 import secrets
 import random
+import uuid
+import json
 from datetime import datetime, timedelta
 
 from authstore import save_access_token, save_user_otp
@@ -714,6 +716,33 @@ class AccountResponse(BaseModel):
     balances: dict
     metadata: Optional[dict] = None
 
+class PaymentDestination(BaseModel):
+    rail: str  # e.g., "stablecoin"
+    network: str  # e.g., "solana" 
+    address: str  # e.g., "6oK8...abc"
+
+class CreatePaymentRequest(BaseModel):
+    source_account_id: str
+    amount: str
+    currency: str
+    destination: PaymentDestination
+    description: Optional[str] = None
+    client_reference: Optional[str] = None
+
+class PaymentFee(BaseModel):
+    type: str
+    amount: str
+    currency: str
+
+class PaymentResponse(BaseModel):
+    id: str
+    status: str
+    amount: str
+    currency: str
+    fx: Optional[dict] = None
+    fees: List[PaymentFee]
+    created_at: str
+
 @app.post("/api/v1/create_account", response_model=AccountResponse, status_code=status.HTTP_201_CREATED)
 async def create_account(
     data: CreateAccountRequest,
@@ -840,6 +869,7 @@ async def update_account(
         models.Account.user_id == user_id,
         models.Account.status == "ACTIVE"
     ).first()
+    
     if not account:
         raise HTTPException(status_code=404, detail="Account not found")
 
@@ -857,4 +887,173 @@ async def update_account(
         balances=account.balances or {},
         metadata=account.account_metadata
     )
+@app.post("/api/v1/payments", response_model=PaymentResponse, status_code=status.HTTP_201_CREATED)
+async def create_payment(
+    data: CreatePaymentRequest,
+    token: str = Depends(oauth2_scheme),
+    db: Session = Depends(get_db)
+    ):
     
+    """
+    Create a new payment to a stablecoin address.
+    """
+    
+    print("Received payment request data:", data)
+    try:
+        payload = jwt.decode(token, os.getenv("JWT_SECRET", "your_jwt_secret"), algorithms=["HS256"])
+        user_id = payload.get("sub")
+        print("Decoded JWT payload:", payload)
+        
+        if not user_id:
+            print("Invalid token: user_id missing")
+            raise HTTPException(status_code=401, detail="Invalid token")
+        
+    except jwt.PyJWTError as e:
+        print("JWT decode error:", str(e))
+        raise HTTPException(status_code=401, detail="Invalid token")
+
+    print("Verifying source account...")
+    source_account = db.query(models.Account).filter(
+        models.Account.id == data.source_account_id,
+        models.Account.user_id == user_id,
+        models.Account.status == "ACTIVE"
+    ).first()
+    
+    if not source_account:
+        print("Source account not found for user:", user_id)
+        raise HTTPException(status_code=404, detail="Source account not found")
+
+    payment_id = f"pay_{uuid.uuid4().hex[:8].upper()}"
+    print("Generated payment ID:", payment_id)
+    
+    network_fee = PaymentFee(
+        type="network",
+        amount="0.12", #TODO: UPDATE WITH OUR FX RATE
+        currency=data.currency
+    )
+    
+    print("Calculated network fee:", network_fee)
+    
+    print("Creating payment record in database...")
+    payment = models.Payment(
+        id=payment_id,
+        user_id=user_id,
+        source_account_id=data.source_account_id,
+        amount=data.amount,
+        currency=data.currency,
+        destination_rail=data.destination.rail,
+        destination_network=data.destination.network,
+        destination_address=data.destination.address,
+        description=data.description,
+        client_reference=data.client_reference,
+        status="pending",
+        fx_data=None,  # No FX for same currency
+        fees_data=json.dumps([network_fee.model_dump()])
+    )
+    
+    db.add(payment)
+    db.commit()
+    db.refresh(payment)
+    
+    print("Payment record created:", payment)
+    
+    response = PaymentResponse(
+        id=payment.id,
+        status=payment.status,
+        amount=payment.amount,
+        currency=payment.currency,
+        fx=None,
+        fees=[network_fee],
+        created_at=payment.created_at.isoformat() + "Z"
+    )
+    
+    print("Returning payment response:", response)
+    return response
+
+@app.get("/api/v1/payments/{payment_id}", response_model=PaymentResponse)
+async def get_payment(
+    payment_id: str,
+    token: str = Depends(oauth2_scheme),
+    db: Session = Depends(get_db)
+):
+    try:
+        payload = jwt.decode(token, os.getenv("JWT_SECRET", "your_jwt_secret"), algorithms=["HS256"])
+        user_id = payload.get("sub")
+        if not user_id:
+            raise HTTPException(status_code=401, detail="Invalid token")
+    except jwt.PyJWTError:
+        raise HTTPException(status_code=401, detail="Invalid token")
+
+    payment = db.query(models.Payment).filter(
+        models.Payment.id == payment_id,
+        models.Payment.user_id == user_id
+    ).first()
+    if not payment:
+        raise HTTPException(status_code=404, detail="Payment not found")
+
+    # Parse fees_data from JSON
+    fees = []
+    if payment.fees_data:
+        try:
+            fees_list = json.loads(payment.fees_data)
+            fees = [PaymentFee(**fee) for fee in fees_list]
+        except Exception:
+            fees = []
+
+    return PaymentResponse(
+        id=payment.id,
+        status=payment.status,
+        amount=payment.amount,
+        currency=payment.currency,
+        fx=payment.fx_data if payment.fx_data else None,
+        fees=fees,
+        created_at=payment.created_at.isoformat() + "Z"
+    )
+
+class UpdateTransactionRequest(BaseModel):
+    amount: Optional[float] = None
+    currency: Optional[str] = None
+    type: Optional[str] = None
+    status: Optional[str] = None
+
+@app.put("/api/v1/transactions/{transaction_id}", status_code=status.HTTP_200_OK)
+async def update_transaction(
+    transaction_id: str,
+    data: UpdateTransactionRequest,
+    token: str = Depends(oauth2_scheme),
+    db: Session = Depends(get_db)
+):
+    try:
+        payload = jwt.decode(token, os.getenv("JWT_SECRET", "your_jwt_secret"), algorithms=["HS256"])
+        user_id = payload.get("sub")
+        if not user_id:
+            raise HTTPException(status_code=401, detail="Invalid token")
+    except jwt.PyJWTError:
+        raise HTTPException(status_code=401, detail="Invalid token")
+
+    transaction = db.query(models.Transaction).filter(
+        models.Transaction.id == transaction_id,
+        models.Transaction.user_id == user_id
+    ).first()
+    if not transaction:
+        raise HTTPException(status_code=404, detail="Transaction not found")
+
+    if data.amount is not None:
+        transaction.amount = data.amount
+    if data.currency is not None:
+        transaction.currency = data.currency
+    if data.type is not None:
+        transaction.type = data.type
+    if data.status is not None:
+        transaction.status = data.status
+
+    db.commit()
+    db.refresh(transaction)
+    return {
+        "id": str(transaction.id),
+        "amount": transaction.amount,
+        "currency": transaction.currency,
+        "type": transaction.type,
+        "status": transaction.status,
+        "created_at": transaction.created_at
+    }

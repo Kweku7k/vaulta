@@ -82,3 +82,24 @@ class Account(Base):
     status = Column(String, nullable=False, default="ACTIVE")  # e.g., 'active', 'inactive', 'closed'
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
+
+class Payment(Base):
+    __tablename__ = "payments"
+
+    id = Column(String, primary_key=True, index=True)  # pay_01JAZG...
+    user_id = Column(String)
+    source_account_id = Column(String)
+    amount = Column(String)  # Store as string to maintain precision
+    currency = Column(String)
+    destination_rail = Column(String)  # e.g., 'stablecoin'
+    destination_network = Column(String)  # e.g., 'solana'
+    destination_address = Column(String)
+    description = Column(String, nullable=True)
+    client_reference = Column(String, nullable=True)
+    status = Column(String, default="pending")  # pending, completed, failed
+    fx_data = Column(String, nullable=True)  # Store as JSON string for fx information
+    fees_data = Column(String, nullable=True)  # Store as JSON string for fees
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), onupdate=func.now())
+    success_callback_url = Column(String, nullable=True)
+    failed_callback_url = Column(String, nullable=True)
