@@ -621,6 +621,40 @@ async def get_all_transactions(user_id: str = Depends(get_authenticated_user_id)
     ]
     return result
 
+@app.get("/api/v1/transactions/{transaction_id}")
+async def get_transaction(
+    transaction_id: str,
+    token: str = Depends(oauth2_scheme),
+    db: Session = Depends(get_db)
+):
+    try:
+        payload = jwt.decode(token, os.getenv("JWT_SECRET", "your_jwt_secret"), algorithms=["HS256"])
+        user_id = payload.get("sub")
+        if not user_id:
+            raise HTTPException(status_code=401, detail="Invalid token")
+    except jwt.PyJWTError:
+        raise HTTPException(status_code=401, detail="Invalid token")
+
+    transaction = db.query(models.Transaction).filter(
+        models.Transaction.id == transaction_id,
+        models.Transaction.user_id == user_id
+    ).first()
+    if not transaction:
+        raise HTTPException(status_code=404, detail="Transaction not found")
+
+    return {
+        "id": str(transaction.id),
+        "amount": transaction.amount,
+        "currency": transaction.currency,
+        "type": transaction.transaction_type,
+        "provider": transaction.provider,
+        "status": transaction.status,
+        "reference": transaction.reference,
+        "description": transaction.description,
+        "created_at": transaction.created_at,
+        "updated_at": transaction.updated_at
+    }
+
 class CreateTransactionRequest(BaseModel):
     amount: float
     currency: str
@@ -858,7 +892,7 @@ async def update_account(
 
     account.account_name = data.name
     account.currency = data.currency
-    account.account_metadata = data.metadata or {}
+    # account.account_metadata = data.metadata or {}
     db.commit()
     db.refresh(account)
     
