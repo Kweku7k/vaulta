@@ -60,10 +60,11 @@ class Transaction(Base):
     amount = Column(Integer, nullable=False)
     currency = Column(String, nullable=False)
     user_id = Column(String, nullable=False)
-    transaction_type = Column(String, nullable=False)  # e.g., 'deposit', 'withdrawal'
-    provider = Column(String, nullable=False)  # e.g., 'deposit', 'withdrawal'
+    transaction_type = Column(String, nullable=False)  # e.g., 'deposit', 'withdrawal', 'payment'
+    provider = Column(String, nullable=False)  # e.g., 'internal', 'external', 'stablecoin'
     status = Column(String, nullable=False)  # e.g., 'pending', 'completed', 'failed'
     reference = Column(String, unique=True, index=True, nullable=True)
+    description = Column(String, nullable=True)  # Added description field
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
 
@@ -87,6 +88,7 @@ class Payment(Base):
     __tablename__ = "payments"
 
     id = Column(String, primary_key=True, index=True)  # pay_01JAZG...
+    transaction_id = Column(Integer, ForeignKey("transactions.id"), nullable=True)  # Link to transaction
     user_id = Column(String)
     source_account_id = Column(String)
     amount = Column(String)  # Store as string to maintain precision
@@ -96,9 +98,11 @@ class Payment(Base):
     destination_address = Column(String)
     description = Column(String, nullable=True)
     client_reference = Column(String, nullable=True)
-    status = Column(String, default="pending")  # pending, completed, failed
+    status = Column(String, default="pending")  # pending, approved, completed, failed
     fx_data = Column(String, nullable=True)  # Store as JSON string for fx information
     fees_data = Column(String, nullable=True)  # Store as JSON string for fees
+    admin_approved_by = Column(String, nullable=True)  # Admin who approved the payment
+    admin_approved_at = Column(DateTime(timezone=True), nullable=True)  # When approved
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
     success_callback_url = Column(String, nullable=True)

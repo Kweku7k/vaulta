@@ -48,12 +48,16 @@ def send_slack(message):
     # if os.getenv("ALLOW_SLACK_MESSAGING") == "False":
     #     return ApiResponse(data=None, message="Slack messaging is not allowed", code=response.status_code, status="Undelivered", success=False)
     try:
+        print(f"Preparing to send Slack message: {message}")
         slack_data = {'text': message}
+        print(f"Slack data payload: {slack_data}")
         # Send the message to Slack
         response = requests.post("https://hooks.slack.com/services/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", json=slack_data)
+        print(f"Slack response status code: {response.status_code}")
+        print(f"Slack response text: {response.text}")
         return response
     except Exception as e:
-        print(e)
+        print(f"Error sending Slack message: {e}")
         return False
     
 def send_private_slack(message):
