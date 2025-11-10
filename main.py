@@ -601,9 +601,31 @@ async def toggle_api_key_status(body: ToggleApiKeyRequest, token: str = Depends(
     db.refresh(api_key_obj)
     return {"api_key": api_key_obj.key, "active": api_key_obj.active}
 
+@app.get("/api/v1/admin/transactions")
+async def get_all_admin_transactions(user_id: str = Depends(get_authenticated_user_id), db: Session = Depends(get_db)):
+    # transactions = db.query(models.Transaction).filter(models.Transaction.user_id == user_id).all()
+    transactions = db.query(models.Transaction).all()
+    result = [
+        {
+            "id": str(tx.id),
+            "amount": tx.amount,
+            "currency": tx.currency,
+            "type": tx.transaction_type,
+            "provider": tx.provider,
+            "status": tx.status,
+            "reference": tx.reference,
+            "description": tx.description,
+            "created_at": tx.created_at,
+            "updated_at": tx.updated_at
+        }
+        for tx in transactions
+    ]
+    return result
+
 @app.get("/api/v1/transactions")
 async def get_all_transactions(user_id: str = Depends(get_authenticated_user_id), db: Session = Depends(get_db)):
-    transactions = db.query(models.Transaction).filter(models.Transaction.user_id == user_id).all()
+    # transactions = db.query(models.Transaction).filter(models.Transaction.user_id == user_id).all()
+    transactions = db.query(models.Transaction).all()
     result = [
         {
             "id": str(tx.id),
