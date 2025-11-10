@@ -601,26 +601,6 @@ async def toggle_api_key_status(body: ToggleApiKeyRequest, token: str = Depends(
     db.refresh(api_key_obj)
     return {"api_key": api_key_obj.key, "active": api_key_obj.active}
 
-@app.get("/api/v1/admin/transactions")
-async def get_all_admin_transactions(user_id: str = Depends(get_authenticated_user_id), db: Session = Depends(get_db)):
-    # transactions = db.query(models.Transaction).filter(models.Transaction.user_id == user_id).all()
-    transactions = db.query(models.Transaction).all()
-    result = [
-        {
-            "id": str(tx.id),
-            "amount": tx.amount,
-            "currency": tx.currency,
-            "type": tx.transaction_type,
-            "provider": tx.provider,
-            "status": tx.status,
-            "reference": tx.reference,
-            "description": tx.description,
-            "created_at": tx.created_at,
-            "updated_at": tx.updated_at
-        }
-        for tx in transactions
-    ]
-    return result
 
 @app.get("/api/v1/transactions")
 async def get_all_transactions(user_id: str = Depends(get_authenticated_user_id), db: Session = Depends(get_db)):
@@ -1321,3 +1301,50 @@ async def create_single_transaction(
         "status": transaction.status,
         "created_at": transaction.created_at
     }
+
+
+
+@app.get("/api/v1/admin/transactions")
+async def get_all_admin_transactions(user_id: str = Depends(get_authenticated_user_id), db: Session = Depends(get_db)):
+    # transactions = db.query(models.Transaction).filter(models.Transaction.user_id == user_id).all()
+    transactions = db.query(models.Transaction).all()
+    result = [
+        {
+            "id": str(tx.id),
+            "amount": tx.amount,
+            "currency": tx.currency,
+            "type": tx.transaction_type,
+            "provider": tx.provider,
+            "status": tx.status,
+            "reference": tx.reference,
+            "description": tx.description,
+            "created_at": tx.created_at,
+            "updated_at": tx.updated_at
+        }
+        for tx in transactions
+    ]
+    return result
+
+
+@app.get("/api/v1/users")
+async def get_all_users(token: str = Depends(oauth2_scheme), db: Session = Depends(get_db)):
+    try:
+        payload = jwt.decode(token, os.getenv("JWT_SECRET", "your_jwt_secret"), algorithms=["HS256"])
+        user_id = payload.get("sub")
+        if not user_id:
+            raise HTTPException(status_code=401, detail="Invalid token")
+    except jwt.PyJWTError:
+        raise HTTPException(status_code=401, detail="Invalid token")
+
+    users = db.query(models.User).all()
+    result = [
+        {
+            "id": str(user.id),
+            "first_name": user.first_name,
+            "last_name": user.last_name,
+            "email": user.email,
+            "phone": user.phone
+        }
+        for user in users
+    ]
+    return {"users": result, "count": len(result)}
