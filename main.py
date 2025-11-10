@@ -1326,7 +1326,7 @@ async def get_all_admin_transactions(user_id: str = Depends(get_authenticated_us
     return result
 
 
-@app.get("/api/v1/users")
+@app.get("/api/v1/admin/users")
 async def get_all_users(token: str = Depends(oauth2_scheme), db: Session = Depends(get_db)):
     try:
         payload = jwt.decode(token, os.getenv("JWT_SECRET", "your_jwt_secret"), algorithms=["HS256"])
