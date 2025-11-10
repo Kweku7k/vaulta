@@ -1347,4 +1347,4 @@ async def get_all_users(token: str = Depends(oauth2_scheme), db: Session = Depen
         }
         for user in users
     ]
-    return {"users": result, "count": len(result)}
+    return {"data": result, "count": len(result)}
