@@ -8,6 +8,7 @@ class User(Base):
     id = Column(String, primary_key=True, index=True)
     first_name = Column(String)
     last_name = Column(String)
+    role = Column(String)
     email = Column(String, unique=True, index=True)
     phone = Column(String)
     password = Column(String)
@@ -107,3 +108,16 @@ class Payment(Base):
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
     success_callback_url = Column(String, nullable=True)
     failed_callback_url = Column(String, nullable=True)
+    
+class FxRates(Base):
+    __tablename__ = "fx_rates"
+    
+    id = Column(String, primary_key=True, index=True)  # pay_01JAZG...
+    buy = Column(String, nullable=False)
+    pair = Column(String, nullable=False)
+    sell = Column(String, nullable=False)
+    buy_price = Column(String, nullable=False)
+    sell_price = Column(String, nullable=False)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), onupdate=func.now())
+

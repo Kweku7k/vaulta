@@ -29,7 +29,7 @@ import hashlib
 import jwt
 from fastapi.security import OAuth2PasswordBearer
 
-from ovex_apis import create_quote
+from ovex_apis import create_quote, get_trade_history
 from ovex_apis import get_markets
 from redis_client import r
 
@@ -318,6 +318,7 @@ async def verify_otp(body: VerifyOtpBody, db: Session = Depends(get_db)):
     # JWT settings
     jwt_response = issue_jwt_token(user_id)
     print("==jwt_response==")
+    
     print(jwt_response)
     
     jwt_response['user'] = user
@@ -367,6 +368,7 @@ async def get_account(token: str = Depends(oauth2_scheme), db: Session = Depends
         "first_name": user.first_name,
         "last_name": user.last_name,
         "email": user.email,
+        "role": user.role,
         "phone": user.phone,
         "dashboard":{
             "wallet_balance":"39",
@@ -1348,3 +1350,104 @@ async def get_all_users(token: str = Depends(oauth2_scheme), db: Session = Depen
         for user in users
     ]
     return {"data": result, "count": len(result)}
+
+
+@app.get("/api/v1/fx_rates")
+async def get_all_fx_rates(token: str = Depends(oauth2_scheme), db: Session = Depends(get_db)):
+    try:
+        payload = jwt.decode(token, os.getenv("JWT_SECRET", "your_jwt_secret"), algorithms=["HS256"])
+        user_id = payload.get("sub")
+        if not user_id:
+            raise HTTPException(status_code=401, detail="Invalid token")
+    except jwt.PyJWTError:
+        raise HTTPException(status_code=401, detail="Invalid token")
+
+    fx_rates = db.query(models.FxRates).all()
+    result = [
+        {
+            "id": str(fx_rate.id),
+            "pair": fx_rate.pair,
+            "buy": fx_rate.buy,
+            "sell": fx_rate.sell,
+            "buy_price": fx_rate.buy_price,
+            "sell_price": fx_rate.sell_price
+        }
+        for fx_rate in fx_rates
+    ]
+    return {"data": result, "count": len(result)}
+
+
+# response_model=PaymentResponse, status_code=status.HTTP_201_CREATED)
+# async def create_payment(
+#     data: CreatePaymentRequest,
+
+# 
+
+class FxRatesUpdateRequest(BaseModel):
+    pair: str
+    buy: str
+    sell: str
+    
+
+class FxRatesUpdateResponse(BaseModel):
+    pair: str
+    buy: str
+    sell: str
+
+@app.post("/api/v1/fx_rates")
+async def get_all_fx_rates(data:FxRatesUpdateRequest, token: str = Depends(oauth2_scheme), db: Session = Depends(get_db)):
+    try:
+        payload = jwt.decode(token, os.getenv("JWT_SECRET", "your_jwt_secret"), algorithms=["HS256"])
+        user_id = payload.get("sub")
+        if not user_id:
+            raise HTTPException(status_code=401, detail="Invalid token")
+    except jwt.PyJWTError:
+        raise HTTPException(status_code=401, detail="Invalid token")
+
+    fxrates_id = f"pay_{uuid.uuid4().hex[:8].upper()}"
+    print("Generated payment ID:", fxrates_id)
+    
+    new_fx_rate = models.FxRates(
+        id = fxrates_id,
+        pair = data.pair,
+        buy = data.buy,
+        sell = data.sell,
+        sell_price = data.sell,
+        buy_price = data.sell
+    )
+    
+    db.add(new_fx_rate)
+    db.commit()
+    db.refresh(new_fx_rate)
+    
+    return new_fx_rate
+
+@app.get("/api/v1/ovex/history")
+async def get_trade_history_route(token: str = Depends(oauth2_scheme), db: Session = Depends(get_db)):
+    print("===")
+    try:
+        payload = jwt.decode(token, os.getenv("JWT_SECRET", "your_jwt_secret"), algorithms=["HS256"])
+        user_id = payload.get("sub")
+        if not user_id:
+            raise HTTPException(status_code=401, detail="Invalid token")
+    except jwt.PyJWTError:
+        raise HTTPException(status_code=401, detail="Invalid token")
+
+    # Assuming you have a TradeHistory model/table
+    trades = get_trade_history()['trades']
+    
+    print(trades[0])
+    result = [
+        {
+            "id": str(trade['id']),
+            "from_currency": trade['from_currency'],
+            "to_currency": trade['to_currency'],
+            "from_amount": trade['from_amount'],
+            "to_amount": trade['to_amount'],
+            "rate": trade['rate'],
+            "status": trade['status'],
+            "created_at": trade['created_at']
+        }
+        for trade in trades
+    ]
+    return {"trade_history": result, "count": "len(result)"}

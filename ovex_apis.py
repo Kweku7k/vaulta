@@ -1,5 +1,3 @@
-
-
 from datetime import time
 import hashlib
 import hmac
@@ -103,3 +101,23 @@ def get_markets():
 
 def get_order_status(order_id):
     pass
+
+def get_trade_history():
+    path = "/trades/history"
+    print(path)
+    url = f"{OVEX_BASE_URL}{path}"
+    print(f"Requesting trade history from: {url}")
+    
+    auth_token = os.environ.get("OVEX_BEARER_TOKEN")
+    print(auth_token)
+    headers = {
+        "Authorization":"Bearer " + os.environ.get("OVEX_BEARER_TOKEN")
+    }
+    print(f"Using headers: {headers}")
+    res = requests.get(url, headers=headers)
+    print(f"Response status code: {res.status_code}")
+    if res.status_code >= 300:
+        print(f"Error response: {res.text}")
+        return (res.text, res.status_code)
+    print("Trade history retrieved successfully.")
+    return res.json()
