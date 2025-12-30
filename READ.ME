@@ -1,0 +1,8 @@
+### HOW TO DO A MIGRATIONS
+alembic revision --autogenerate -m "add fxrates.pair"
+
+alembic upgrade head
+
+### HOW TO RUN
+uvicorn main:app --reload
+
