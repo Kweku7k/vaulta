@@ -9,7 +9,7 @@ from variables import OVEX_BASE_URL
 import time
 
 load_dotenv() 
-
+ 
 OVEX_API_KEY = os.getenv('OVEX_API_KEY')
 OVEX_SECRET = os.getenv('OVEX_SECRET')
 
@@ -105,19 +105,29 @@ def get_order_status(order_id):
 def get_trade_history():
     path = "/trades/history"
     print(path)
+    
     url = f"{OVEX_BASE_URL}{path}"
     print(f"Requesting trade history from: {url}")
     
     auth_token = os.environ.get("OVEX_BEARER_TOKEN")
     print(auth_token)
+    
     headers = {
         "Authorization":"Bearer " + os.environ.get("OVEX_BEARER_TOKEN")
     }
+    
+    params = {
+        "from": "2022-12-31T08:00:00+00:00",
+        "to": "2028-01-31T08:00:00+00:00"
+    }
+    
     print(f"Using headers: {headers}")
-    res = requests.get(url, headers=headers)
+    res = requests.get(url, headers=headers, params=params)
+    
     print(f"Response status code: {res.status_code}")
     if res.status_code >= 300:
         print(f"Error response: {res.text}")
         return (res.text, res.status_code)
+    
     print("Trade history retrieved successfully.")
     return res.json()
