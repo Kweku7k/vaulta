@@ -1450,4 +1450,24 @@ async def get_trade_history_route(token: str = Depends(oauth2_scheme), db: Sessi
         }
         for trade in trades
     ]
-    return {"trade_history": result, "count": "len(result)"}
+    return {"trade_history": result, "count": len(result)}
+
+@app.get("/api/v1/ovex/total")
+async def get_trade_total_route(token: str = Depends(oauth2_scheme), db: Session = Depends(get_db)):
+    try:
+        payload = jwt.decode(token, os.getenv("JWT_SECRET", "your_jwt_secret"), algorithms=["HS256"])
+        user_id = payload.get("sub")
+        if not user_id:
+            raise HTTPException(status_code=401, detail="Invalid token")
+    except jwt.PyJWTError:
+        raise HTTPException(status_code=401, detail="Invalid token")
+
+    trades = get_trade_history()['trades']
+     
+    total_from_amount = sum(float(trade['from_amount']) for trade in trades)
+    total_to_amount = sum(float(trade['to_amount']) for trade in trades)
+    return {
+        "total_from_amount": total_from_amount,
+        "total_to_amount": total_to_amount,
+        "count": len(trades)
+    }
