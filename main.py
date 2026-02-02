@@ -918,6 +918,8 @@ async def create_payment(
     db: Session = Depends(get_db)
     ):
     
+    BASE_URL="https://dashboard.vaulta.digital"
+    
     """
     Create a new payment to a stablecoin address.
     """
@@ -946,6 +948,16 @@ async def create_payment(
     if not source_account:
         print("Source account not found for user:", user_id)
         raise HTTPException(status_code=404, detail="Source account not found")
+
+    print("==source_account")
+    print(source_account.id)
+    print(source_account.user)  
+    # print(source_account.user.email)
+    
+    # get user by id
+    user = db.query(models.User).filter(models.User.id == user_id).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
 
     payment_id = f"pay_{uuid.uuid4().hex[:8].upper()}"
     print("Generated payment ID:", payment_id)
@@ -980,6 +992,56 @@ async def create_payment(
     db.refresh(payment)
     
     print("Payment record created:", payment)
+    
+    # Send email notification to client about payment creation
+    try:
+        send_email(
+            template="payment_created.html",
+            subject="Your payment request has been received",
+            to=[user.email],
+            context={
+                "name": user.first_name,
+                "amount": data.amount,
+                "currency": data.currency,
+                "source_account_id": source_account.id,
+                "destination_rail": data.destination.rail,
+                "destination_network": data.destination.network,
+                "destination_address": data.destination.address,
+                "description": data.description,
+                "client_reference": data.client_reference,
+                "payment_id": payment_id,
+            }
+        )
+        
+    except Exception as e:
+        print(f"Failed to send payment creation email: {e}")
+        
+    try:
+        send_email(
+        template="transaction_approval_required.html",
+        subject=f"[DEMO] Approval required: Transaction {payment_id}",
+        to=["dev@vaulta.digital"],  # list[str]
+        context={
+            "payment_id": payment_id,
+            "initiator_name": user.first_name,
+            "initiator_email": user.email,
+            "amount": data.amount,
+            "currency": data.currency,
+            "source_account_id": source_account.id,
+            "destination_rail": data.destination.rail,
+            "destination_network": data.destination.network,
+            "destination_address": data.destination.address,
+            "description": data.description,
+            "client_reference": data.client_reference,
+            "approve_url": f"{BASE_URL}/dashboard",
+            "decline_url": f"{BASE_URL}/dashboard",
+        },
+        from_email="payments@noreply.vaulta.digital"
+        )
+    
+    except Exception as e:
+        print(f"Failed to send admin approval email: {e}")
+        
     
     response = PaymentResponse(
         id=payment.id,

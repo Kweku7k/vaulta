@@ -84,6 +84,8 @@ class Account(Base):
     status = Column(String, nullable=False, default="ACTIVE")  # e.g., 'active', 'inactive', 'closed'
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
+    user = Column(String, ForeignKey("users.id"))
+
 
 class Payment(Base):
     __tablename__ = "payments"

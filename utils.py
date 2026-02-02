@@ -18,7 +18,7 @@ def render_template(template_name: str, context: dict = {}):
         print(f"Template rendering error: {e}")
         return "<p>Error rendering template</p>"
     
-def send_email(template, subject, to, context):
+def send_email(template, subject, to, context, from_email="onboarding@noreply.vaulta.digital"):
 # def send_email(template="otp_input.html", subject="HELLO", context={"name":"Kweku", "subject":"Welcome Email"}):
     # context={"name":"Kweku", "subject":"Welcome Email"}
     print(type(context))
@@ -26,7 +26,7 @@ def send_email(template, subject, to, context):
     html_content = render_template(template, {**context, "subject": subject})
     try:
         params: resend.Emails.SendParams = {
-        "from": "onboarding@noreply.vaulta.digital",
+        "from": from_email,
         "to": to,
         "subject": subject,
         "html": html_content,

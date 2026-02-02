@@ -1,0 +1,176 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Transaction Initiated</title>
+  <style>
+    body {
+      margin: 0;
+      padding: 0;
+      background-color: #838383;
+      font-family: "Helvetica Neue", Helvetica, Arial, sans-serif;
+      color: #fff;
+    }
+
+    .container {
+      max-width: 500px;
+      margin: 0 auto;
+      padding: 60px 20px;
+    }
+
+    .logo {
+      display: flex;
+      align-items: center;
+      margin-bottom: 40px;
+    }
+
+    .logo img {
+      height: 30px;
+    }
+
+    h1 {
+      font-size: 42px;
+      margin-bottom: 25px;
+      font-weight: 900;
+      color: white;
+      line-height: 1.2;
+    }
+
+    p {
+      font-size: 16px;
+      margin-bottom: 18px;
+      line-height: 1.5;
+      color: white;
+    }
+
+    .card {
+      background: #111;
+      border-radius: 12px;
+      padding: 20px;
+      margin: 25px 0;
+      font-size: 14px;
+    }
+
+    .row {
+      margin-bottom: 10px;
+    }
+
+    .label {
+      color: #aaa;
+      font-size: 12px;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+    }
+
+    .value {
+      font-weight: 700;
+      font-size: 15px;
+      color: #fff;
+      word-break: break-all;
+    }
+
+    .highlight {
+      color: orange;
+      font-weight: bold;
+    }
+
+    .support {
+      font-size: 13px;
+      margin-top: 20px;
+    }
+
+    .support a {
+      color: orange;
+      text-decoration: none;
+    }
+
+    .footer {
+      margin-top: 30px;
+      font-size: 10px;
+      color: #aaa;
+    }
+
+    .footer-text {
+      margin-bottom: 10px;
+      line-height: 1.5;
+      font-size: 9px;
+    }
+  </style>
+</head>
+<body>
+
+  <div class="container" style="background-color: #000;">
+    <div class="logo">
+      <img src="https://firebasestorage.googleapis.com/v0/b/myfirstproject-721e6.firebasestorage.app/o/VAULTA%20LOGO.png?alt=media&token=7e0ac92e-3009-4d61-8dc9-7bda435fe0c6" alt="Vaulta Logo" />
+    </div>
+
+    <h1>Transaction<br>Initiated</h1>
+
+    <p>
+      Hello <strong>{{ name }}</strong>,
+    </p>
+
+    <p>
+      Your transaction has been <span class="highlight">successfully initiated</span>.
+      It is currently being processed and will be completed shortly.
+    </p>
+
+    <div class="card">
+      <div class="row">
+        <div class="label">Amount</div>
+        <div class="value">{{ amount }} {{ currency }}</div>
+      </div>
+
+      <div class="row">
+        <div class="label">Source Account</div>
+        <div class="value">Account ID {{ source_account_id }}</div>
+      </div>
+
+      <div class="row">
+        <div class="label">Destination</div>
+        <div class="value">
+          {{ destination_rail }} · {{ destination_network }}<br>
+          {{ destination_address }}
+        </div>
+      </div>
+
+      <div class="row">
+        <div class="label">Description</div>
+        <div class="value">{{ description }}</div>
+      </div>
+
+      <div class="row">
+        <div class="label">Client Reference</div>
+        <div class="value">{{ client_reference }}</div>
+      </div>
+    </div>
+
+    <p>
+      You’ll receive another notification once the transaction is completed.
+    </p>
+
+    <p class="support">
+      Need help? Visit our <a href="#">support center</a>.
+    </p>
+
+    <p style="font-size:16px; margin-bottom:0px">
+      Thanks<br>
+      The Vaulta Digital Assets Team
+    </p>
+
+    <div class="footer">
+      <p class="footer-text">
+        Vaulta Digital Assets Ltd. is a financial technology company incorporated in Ghana
+        (registration no. CS054920325), regulated by the Bank of Ghana’s Office of Fintech and Innovation,
+        and operating in accordance with applicable financial services regulations in Ghana and emerging African markets.
+      </p>
+      <p class="footer-text">
+        95 Freetown Avenue, East Legon<br>
+        &copy; 2025 Vaulta Digital Assets. All rights reserved.
+      </p>
+    </div>
+  </div>
+
+</body>
+</html>

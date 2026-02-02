@@ -1,0 +1,110 @@
+Subject: Your payment intent has been approved
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Payment Intent Approved</title>
+  <style>
+    body {
+      margin: 0;
+      padding: 0;
+      background-color: #838383;
+      font-family: "Helvetica Neue", Helvetica, Arial, sans-serif;
+      color: #fff;
+    }
+
+    .container {
+      max-width: 520px;
+      margin: 0 auto;
+      padding: 60px 20px;
+      background-color: #000;
+    }
+
+    h1 {
+      font-size: 40px;
+      font-weight: 900;
+      margin-bottom: 25px;
+      line-height: 1.2;
+    }
+
+    p {
+      font-size: 16px;
+      line-height: 1.5;
+      margin-bottom: 18px;
+      color: #fff;
+    }
+
+    .highlight {
+      color: orange;
+      font-weight: bold;
+    }
+
+    .card {
+      background: #111;
+      border-radius: 12px;
+      padding: 20px;
+      margin: 25px 0;
+    }
+
+    .label {
+      color: #aaa;
+      font-size: 12px;
+      text-transform: uppercase;
+    }
+
+    .value {
+      font-weight: 800;
+      font-size: 16px;
+    }
+
+    .footer {
+      margin-top: 35px;
+      font-size: 10px;
+      color: #aaa;
+    }
+  </style>
+</head>
+<body>
+
+  <div class="container">
+    <h1>Payment intent approved</h1>
+
+    <p>
+      Hello <strong>{{ name }}</strong>,
+    </p>
+
+    <p>
+      Your payment intent has been <span class="highlight">approved</span>
+      and is now ready for processing.
+    </p>
+
+    <div class="card">
+      <p class="label">Amount</p>
+      <p class="value">{{ amount }} {{ currency }}</p>
+
+      <p class="label">Intent ID</p>
+      <p class="value">{{ intent_id }}</p>
+
+      <p class="label">Purpose</p>
+      <p class="value">{{ description }}</p>
+    </div>
+
+    <p>
+      You will receive another notification once the payment is executed.
+    </p>
+
+    <p style="margin-bottom:0px">
+      Thanks<br>
+      The Vaulta Digital Assets Team
+    </p>
+
+    <div class="footer">
+      Vaulta Digital Assets Ltd<br>
+      © 2025 Vaulta Digital Assets
+    </div>
+  </div>
+
+</body>
+</html>
