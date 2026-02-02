@@ -102,7 +102,7 @@ def get_markets():
 def get_order_status(order_id):
     pass
 
-def get_trade_history():
+def get_trade_history(start_date, end_date):
     path = "/trades/history"
     print(path)
     
@@ -117,9 +117,11 @@ def get_trade_history():
     }
     
     params = {
-        "from": "2022-12-31T08:00:00+00:00",
-        "to": "2028-01-31T08:00:00+00:00"
+        "from": start_date,
+        "to": end_date
     }
+    
+    print(f"Using params: {params}")
     
     print(f"Using headers: {headers}")
     res = requests.get(url, headers=headers, params=params)

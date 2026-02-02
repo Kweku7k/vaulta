@@ -32,6 +32,9 @@ from fastapi.security import OAuth2PasswordBearer
 from ovex_apis import create_quote, get_trade_history
 from ovex_apis import get_markets
 from redis_client import r
+from fastapi import Query
+from fastapi import Request
+import inspect
 
 app = FastAPI()
 
@@ -1423,7 +1426,12 @@ async def get_all_fx_rates(data:FxRatesUpdateRequest, token: str = Depends(oauth
     return new_fx_rate
 
 @app.get("/api/v1/ovex/history")
-async def get_trade_history_route(token: str = Depends(oauth2_scheme), db: Session = Depends(get_db)):
+async def get_trade_history_route(
+    start_date: Optional[str] = Query(None, description="YYYY-MM-DD"),
+    end_date: Optional[str] = Query(None, description="YYYY-MM-DD"),
+    token: str = Depends(oauth2_scheme), 
+    db: Session = Depends(get_db)
+    ):
     print("===")
     try:
         payload = jwt.decode(token, os.getenv("JWT_SECRET", "your_jwt_secret"), algorithms=["HS256"])
@@ -1434,7 +1442,31 @@ async def get_trade_history_route(token: str = Depends(oauth2_scheme), db: Sessi
         raise HTTPException(status_code=401, detail="Invalid token")
 
     # Assuming you have a TradeHistory model/table
-    trades = get_trade_history()['trades']
+    # Parse start_date and end_date from query parameters
+    request: Request = db  # db is actually the Depends(get_db), so get from context
+    # But FastAPI doesn't inject Request here, so let's use Query parameters in the route signature instead.
+    # So, update your route definition to:
+    # async def get_trade_history_route(
+    #     start_date: Optional[str] = Query(None),
+    #     end_date: Optional[str] = Query(None),
+    #     token: str = Depends(oauth2_scheme),
+    #     db: Session = Depends(get_db)
+    # ):
+
+    # For now, try to get from request.query_params if possible (but best to update route signature)
+    # frame = inspect.currentframe()
+    # args, _, _, values = inspect.getargvalues(frame)
+    # start_date = values.get('from', None)
+    # end_date = values.get('to', None)
+
+    # If not present, fallback to None
+    if not start_date:
+        start_date = None
+    if not end_date:
+        end_date = None
+
+    # Call get_trade_history with date filters if provided
+    trades = get_trade_history(start_date=start_date, end_date=end_date)['trades']
     
     print(trades[0])
     result = [
@@ -1450,7 +1482,14 @@ async def get_trade_history_route(token: str = Depends(oauth2_scheme), db: Sessi
         }
         for trade in trades
     ]
-    return {"trade_history": result, "count": len(result)}
+    
+    total_from_amount = sum(float(trade['from_amount']) for trade in trades)
+    total_to_amount = sum(float(trade['to_amount']) for trade in trades)
+    
+    
+    return {"trade_history": result, "count": len(result), 
+            "total_from_amount": total_from_amount,
+            "total_to_amount": total_to_amount,}
 
 @app.get("/api/v1/ovex/total")
 async def get_trade_total_route(token: str = Depends(oauth2_scheme), db: Session = Depends(get_db)):
