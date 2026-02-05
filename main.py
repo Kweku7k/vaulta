@@ -611,6 +611,7 @@ async def toggle_api_key_status(body: ToggleApiKeyRequest, token: str = Depends(
 async def get_all_transactions(user_id: str = Depends(get_authenticated_user_id), db: Session = Depends(get_db)):
     # transactions = db.query(models.Transaction).filter(models.Transaction.user_id == user_id).all()
     transactions = db.query(models.Transaction).all()
+    pending_payments = db.query(models.Payment).filter(models.Payment.status == "pending").all()
     result = [
         {
             "id": str(tx.id),
@@ -626,6 +627,27 @@ async def get_all_transactions(user_id: str = Depends(get_authenticated_user_id)
         }
         for tx in transactions
     ]
+    
+    payemnts = [
+        {
+            "id": str(payment.id),
+            "amount": payment.amount,
+            "currency": payment.currency,
+            "type": "intent",
+            "destination_rail": payment.destination_rail,
+            "destination_network": payment.destination_network,
+            "destination_address": payment.destination_address,
+            "description": payment.description,
+            "client_reference": payment.client_reference,
+            "status": payment.status,
+            "created_at": payment.created_at,
+            "updated_at": payment.updated_at
+        }
+        for payment in pending_payments
+    ]
+    
+    result.extend(payemnts)
+    
     return result
 
 @app.get("/api/v1/transactions/{transaction_id}")
