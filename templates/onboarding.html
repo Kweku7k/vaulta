@@ -677,6 +677,25 @@
 
     .rail-button:hover { background: var(--gray-50); border-color: var(--gray-300); }
 
+    /* ── Text inputs ────────────────────────────────────────── */
+    .text-input {
+      width: 100%;
+      padding: 10px 12px;
+      border: 1px solid var(--gray-200);
+      border-radius: var(--radius-sm);
+      font-size: 14px;
+      font-family: inherit;
+      color: var(--gray-900);
+      background: #fff;
+      outline: none;
+      transition: border-color var(--duration) var(--ease), box-shadow var(--duration) var(--ease);
+    }
+    .text-input:focus {
+      border-color: var(--accent);
+      box-shadow: 0 0 0 3px rgba(202,138,4,.1);
+    }
+    .text-input::placeholder { color: var(--gray-400); }
+
     /* ── Toast ─────────────────────────────────────────────── */
     .toast-container {
       position: fixed;
@@ -772,7 +791,16 @@
             Accepted formats vary per section &mdash; max 10&nbsp;MB per file.
           </p>
 
-          <form id="onboarding-form" method="post" enctype="multipart/form-data" action="https://backend.vaulta.digital/api/v1/upload_documents">
+          <form id="onboarding-form" method="post" enctype="multipart/form-data">
+
+            <div class="field" style="margin-bottom: 12px;">
+              <label for="email">Email address<span class="required">*</span></label>
+              <input type="email" id="email" name="email" required placeholder="you@company.com" class="text-input">
+            </div>
+            <div class="field" style="margin-bottom: 24px;">
+              <label for="phone">Phone number<span class="required">*</span></label>
+              <input type="tel" id="phone" name="phone" required placeholder="+1 (555) 000-0000" class="text-input">
+            </div>
 
             <div class="sections">
 
@@ -1277,18 +1305,32 @@
 
     form.addEventListener('submit', async function (e) {
       e.preventDefault();
+
+      // Validate Persona verification is done
+      var inquiryId = document.getElementById('persona_inquiry_id').value;
+      if (!inquiryId) {
+        showToast('Please complete identity verification first.', 'error');
+        document.getElementById('persona-section').scrollIntoView({ behavior: 'smooth', block: 'center' });
+        return;
+      }
+
       submitBtn.classList.add('loading');
       submitBtn.disabled = true;
       try {
-        var resp = await fetch('/api/v1/upload_documents', { method: 'POST', body: new FormData(form) });
+        var formData = new FormData(form);
+        // Backend expects "inquiry_id" not "persona_inquiry_id"
+        formData.set('inquiry_id', inquiryId);
+        formData.delete('persona_inquiry_id');
+
+        var resp = await fetch(window.__ONBOARDING_API_BASE + '/api/v1/onboarding/complete', { method: 'POST', body: formData });
         var result = await resp.json();
         if (resp.ok) {
           submitBtn.querySelector('.btn-label').textContent = 'Submitted';
-          showToast(result.message || 'Documents uploaded successfully.', 'success');
+          showToast(result.message || 'Onboarding complete!', 'success');
         } else {
           submitBtn.classList.remove('loading');
           submitBtn.disabled = false;
-          showToast(result.detail || 'Upload failed. Please try again.', 'error');
+          showToast(result.detail || 'Submission failed. Please try again.', 'error');
         }
       } catch (err) {
         submitBtn.classList.remove('loading');
@@ -1306,31 +1348,58 @@
   <script>
   (function () {
     'use strict';
-    var PERSONA_TEMPLATE_ID = 'itmpl_GaCPhXyZWYjYhdKLHhoYMd59mNUE';
-    var PERSONA_ENVIRONMENT = 'production';
+
+    var API_BASE = 'https://a42a-154-161-132-182.ngrok-free.app';
+    window.__ONBOARDING_API_BASE = API_BASE;
+
     var btn = document.getElementById('persona-verify-btn');
     var statusEl = document.getElementById('persona-status');
     var statusText = document.getElementById('persona-status-text');
     var hidden = document.getElementById('persona_inquiry_id');
 
+    // Session state populated by /onboarding/start
+    var referenceId = null;
+    var personaTemplateId = null;
+    var personaEnvironment = null;
+
+    // Fetch a reference_id from the backend on page load
+    fetch(API_BASE + '/api/v1/onboarding/start')
+      .then(function (r) { return r.json(); })
+      .then(function (data) {
+        referenceId = data.reference_id;
+        personaTemplateId = data.persona_template_id;
+        personaEnvironment = data.persona_environment;
+        console.log('Onboarding session started:', referenceId);
+      })
+      .catch(function (err) {
+        console.error('Failed to start onboarding session:', err);
+        btn.disabled = true;
+        btn.textContent = 'Service unavailable';
+      });
+
     btn.addEventListener('click', function () {
+      if (!referenceId || !personaTemplateId) {
+        alert('Onboarding session not ready. Please refresh the page.');
+        return;
+      }
+
       btn.disabled = true;
       btn.textContent = 'Loading\u2026';
+
       var client = new Persona.Client({
-        templateId: PERSONA_TEMPLATE_ID,
-        environment: PERSONA_ENVIRONMENT,
-        onReady: function () { btn.textContent = 'Verification in progress\u2026'; client.open(); },
+        templateId: personaTemplateId,
+        environment: personaEnvironment,
+        referenceId: referenceId,
+        onReady: function () {
+          btn.textContent = 'Verification in progress\u2026';
+          client.open();
+        },
         onComplete: function (d) {
           hidden.value = d.inquiryId || '';
           statusEl.className = 'persona-status status-completed';
           statusText.textContent = 'Identity verified successfully.';
           btn.style.display = 'none';
           if (typeof window.__setPersonaDone === 'function') window.__setPersonaDone();
-          fetch('/api/v1/persona/inquiry_complete', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ inquiry_id: d.inquiryId || '', status: 'completed' }),
-          }).catch(function () {});
         },
         onFail: function (d) {
           hidden.value = d.inquiryId || '';

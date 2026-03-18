@@ -43,6 +43,9 @@ def _validate_file(file: UploadFile):
 
 
 async def upload_file_to_firebase(file: UploadFile, folder: str = "onboarding") -> str:
+
+    print(f"file: {file}, folder: {folder}")
+
     """
     Upload a single file to Firebase Storage and return its public URL.
 
@@ -61,8 +64,9 @@ async def upload_file_to_firebase(file: UploadFile, folder: str = "onboarding") 
     bucket = storage.bucket()
     blob = bucket.blob(blob_name)
     blob.upload_from_string(content, content_type=file.content_type)
-    blob.make_public()
-    return blob.public_url
+    # blob.make_public()
+    # return blob.public_url
+    return f"https://storage.googleapis.com/{bucket.name}/{blob_name}"
 
 
 async def upload_documents(files: dict[str, UploadFile | None], folder: str = "onboarding") -> dict[str, str]:
@@ -78,6 +82,9 @@ async def upload_documents(files: dict[str, UploadFile | None], folder: str = "o
     -------
     dict mapping field name -> public URL for every file that was uploaded.
     """
+
+    print(files)
+    
     urls: dict[str, str] = {}
     for field_name, file in files.items():
         if file is None or not file.filename:

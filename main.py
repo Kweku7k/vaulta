@@ -33,10 +33,12 @@ from fastapi.security import OAuth2PasswordBearer
 from ovex_apis import create_quote, get_trade_history
 from ovex_apis import get_markets
 from redis_client import r
-from fastapi import Query, File, UploadFile
+from fastapi import Query, File, UploadFile, Form
 from fastapi import Request
 import inspect
 from firebase_storage import upload_documents
+import httpx
+from core.config import settings
 
 app = FastAPI()
 
@@ -467,8 +469,55 @@ async def register(user_data: UserCreate, db: Session = Depends(get_db)):
         "dashboard":{}
     }
 
-@app.post("/api/v1/upload_documents")
-async def upload_onboarding_documents(
+# ── Onboarding (no auth — users don't have accounts yet) ─────
+
+@app.get("/api/v1/onboarding/start")
+async def start_onboarding(db: Session = Depends(get_db)):
+    """Generate a reference_id for a new Persona inquiry. No auth required."""
+    reference_id = f"kyc_{uuid.uuid4().hex[:12]}"
+
+    kyc = models.UserKyc(reference_id=reference_id, persona_status="pending")
+    db.add(kyc)
+    db.commit()
+    db.refresh(kyc)
+
+    return {
+        "reference_id": reference_id,
+        "persona_template_id": settings.PERSONA_TEMPLATE_ID,
+        "persona_environment": settings.PERSONA_ENVIRONMENT,
+    }
+
+
+@app.get("/api/v1/onboarding/status/{reference_id}")
+async def get_onboarding_status(reference_id: str, db: Session = Depends(get_db)):
+    """Check onboarding state by reference_id. No auth required."""
+    kyc = db.query(models.UserKyc).filter(models.UserKyc.reference_id == reference_id).first()
+    if not kyc:
+        raise HTTPException(status_code=404, detail="Onboarding session not found")
+
+    doc_fields = [
+        "certificate_of_incorporation", "memorandum_and_articles",
+        "ubos_schedule", "company_profile", "id_documents",
+        "company_address_proof", "regulatory_information", "source_of_funds",
+    ]
+    documents = {f: getattr(kyc, f) for f in doc_fields if getattr(kyc, f)}
+
+    return {
+        "reference_id": kyc.reference_id,
+        "status": kyc.persona_status,
+        "persona_inquiry_id": kyc.persona_inquiry_id,
+        "user_id": kyc.user_id,
+        "verified_at": kyc.verified_at.isoformat() if kyc.verified_at else None,
+        "documents_uploaded": len(documents),
+        "documents": documents,
+    }
+
+
+@app.post("/api/v1/onboarding/complete")
+async def complete_onboarding(
+    inquiry_id: str = Form(...),
+    email: str = Form(...),
+    phone: str = Form(...),
     certificate_of_incorporation: UploadFile = File(None),
     memorandum_and_articles: UploadFile = File(None),
     ubos_schedule: UploadFile = File(None),
@@ -477,7 +526,69 @@ async def upload_onboarding_documents(
     company_address_proof: UploadFile = File(None),
     regulatory_information: UploadFile = File(None),
     source_of_funds: UploadFile = File(None),
+    db: Session = Depends(get_db),
 ):
+    """
+    Single submission for new users: Persona inquiry_id + contact info + documents.
+    No auth required — this creates the user account.
+    """
+    # 1. Verify the Persona inquiry server-side
+    async with httpx.AsyncClient() as client:
+        resp = await client.get(
+            f"https://withpersona.com/api/v1/inquiries/{inquiry_id}",
+            headers={
+                "Authorization": f"Bearer {settings.PERSONA_API_KEY}",
+                "Persona-Version": "2023-01-05",
+                "Key-Inflection": "camel",
+            },
+        )
+
+    if resp.status_code != 200:
+        print(f"Persona API error: {resp.status_code} {resp.text}")
+        send_slack_message("rates", f"Persona API error: {resp.status_code} {resp.text} \n{email} \n{phone} \n{inquiry_id}")
+        raise HTTPException(status_code=502, detail="Failed to verify inquiry with Persona")
+
+    inquiry = resp.json().get("data", {})
+    attrs = inquiry.get("attributes", {})
+    reference_id = attrs.get("referenceId")
+
+    # 2. Find the KYC record by reference_id
+    kyc = db.query(models.UserKyc).filter(models.UserKyc.reference_id == reference_id).first()
+    if not kyc:
+        raise HTTPException(status_code=400, detail="No onboarding session found for this inquiry")
+
+    if kyc.user_id:
+        raise HTTPException(status_code=409, detail="Onboarding already completed for this session")
+
+    persona_status = attrs.get("status", "unknown")
+    if persona_status != "completed":
+        raise HTTPException(
+            status_code=400,
+            detail=f"Inquiry status is '{persona_status}', expected 'completed'",
+        )
+
+    # 3. Extract verified name from Persona
+    first_name = attrs.get("nameFirst", "")
+    last_name = attrs.get("nameLast", "")
+
+    # 4. Check if email is already registered
+    existing = db.query(models.User).filter(models.User.email == email).first()
+    if existing:
+        raise HTTPException(status_code=400, detail="Email already registered")
+
+    # 5. Create the user account
+    user_id = secrets.token_hex(8)
+    new_user = models.User(
+        id=user_id,
+        first_name=first_name or email.split("@")[0],
+        last_name=last_name or "",
+        email=email,
+        phone=phone,
+    )
+    db.add(new_user)
+    db.flush()
+
+    # 6. Upload documents to Firebase
     files = {
         "certificate_of_incorporation": certificate_of_incorporation,
         "memorandum_and_articles": memorandum_and_articles,
@@ -488,33 +599,56 @@ async def upload_onboarding_documents(
         "regulatory_information": regulatory_information,
         "source_of_funds": source_of_funds,
     }
-
-    # Filter out empty submissions
     provided = {k: v for k, v in files.items() if v is not None and v.filename}
-    if not provided:
-        raise HTTPException(status_code=400, detail="No documents were provided.")
+
+    urls: dict[str, str] = {}
+    if provided:
+        try:
+            urls = await upload_documents(provided, folder=f"onboarding/{user_id}")
+        except ValueError as e:
+            raise HTTPException(status_code=400, detail=str(e))
+
+    # 7. Link KYC record to the new user
+    kyc.user_id = user_id
+    kyc.email = email
+    kyc.phone = phone
+    kyc.persona_inquiry_id = inquiry_id
+    kyc.persona_status = "completed"
+    kyc.verified_at = datetime.now()
+    for field, url in urls.items():
+        setattr(kyc, field, url)
+
+    db.commit()
+    db.refresh(kyc)
+    db.refresh(new_user)
 
     try:
-        urls = await upload_documents(provided, folder="onboarding")
-    except ValueError as e:
-        raise HTTPException(status_code=400, detail=str(e))
+        send_email(
+            "welcome.html", "Welcome To Vaulta",
+            to=[email],
+            context={"name": new_user.first_name, "to": [email], "subject": "Welcome To Vaulta"},
+        )
+    except Exception as e:
+        print(f"Error sending welcome email: {e}")
 
-    return JSONResponse(
-        status_code=200,
-        content={
-            "message": f"{len(urls)} document(s) uploaded successfully.",
-            "documents": urls,
-        },
-    )
+    send_slack_message("rates", {
+        "message": f"New onboarding complete: {email}",
+        "persona_inquiry_id": inquiry_id,
+        "documents_uploaded": len(urls),
+    })
 
-class PersonaInquiryComplete(BaseModel):
-    inquiry_id: str
-    status: str
+    return {
+        "message": "Onboarding complete — account created",
+        "user_id": user_id,
+        "email": email,
+        "first_name": new_user.first_name,
+        "last_name": new_user.last_name,
+        "persona_status": kyc.persona_status,
+        "persona_inquiry_id": kyc.persona_inquiry_id,
+        "documents_uploaded": len(urls),
+        "document_urls": urls,
+    }
 
-@app.post("/api/v1/persona/inquiry_complete")
-async def persona_inquiry_complete(data: PersonaInquiryComplete):
-    print(f"Persona inquiry completed: {data.inquiry_id} — status: {data.status}")
-    return {"message": "Inquiry recorded", "inquiry_id": data.inquiry_id, "status": data.status}
 
 @app.get("/")
 async def root():

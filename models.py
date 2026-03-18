@@ -123,3 +123,25 @@ class FxRates(Base):
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
 
+class UserKyc(Base):
+    __tablename__ = "user_kyc"
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(String, ForeignKey("users.id"), unique=True, nullable=True)
+    reference_id = Column(String, unique=True, nullable=False)
+    email = Column(String, nullable=True)
+    phone = Column(String, nullable=True)
+    persona_inquiry_id = Column(String, nullable=True)
+    persona_status = Column(String, nullable=True)
+    verified_at = Column(DateTime(timezone=True), nullable=True)
+    certificate_of_incorporation = Column(String, nullable=True)
+    memorandum_and_articles = Column(String, nullable=True)
+    ubos_schedule = Column(String, nullable=True)
+    company_profile = Column(String, nullable=True)
+    id_documents = Column(String, nullable=True)
+    company_address_proof = Column(String, nullable=True)
+    regulatory_information = Column(String, nullable=True)
+    source_of_funds = Column(String, nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), onupdate=func.now())
+
