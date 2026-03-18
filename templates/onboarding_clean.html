@@ -1,0 +1,1348 @@
+
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Onboarding — Vaulta</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+  <style>
+    *, *::before, *::after { box-sizing: border-box; }
+
+    :root {
+      color-scheme: light;
+      --accent: #635bff;
+      --accent-hover: #7a73ff;
+      --accent-bg: rgba(99,91,255,.06);
+      --green: #0ea879;
+      --green-bg: #ecfdf5;
+      --green-border: #a7f3d0;
+      --red: #df1b41;
+      --red-bg: #fef2f2;
+      --red-border: #fecaca;
+      --gray-50: #f7f8fa;
+      --gray-100: #f1f3f5;
+      --gray-200: #e3e5e8;
+      --gray-300: #d0d3d9;
+      --gray-400: #9da1a8;
+      --gray-500: #697077;
+      --gray-600: #535961;
+      --gray-700: #3c4149;
+      --gray-900: #1a1a2e;
+      --radius-sm: 8px;
+      --radius-md: 12px;
+      --radius-lg: 16px;
+      --shadow-sm: 0 2px 4px rgba(0,0,0,.04), 0 0 0 1px rgba(0,0,0,.03);
+      --shadow-md: 0 4px 16px rgba(0,0,0,.06), 0 0 0 1px rgba(0,0,0,.03);
+      --shadow-lg: 0 12px 40px rgba(0,0,0,.08), 0 0 0 1px rgba(0,0,0,.03);
+      --ease: cubic-bezier(.4,0,.2,1);
+      --duration: 200ms;
+    }
+
+    body {
+      margin: 0;
+      font-family: "Inter", -apple-system, BlinkMacSystemFont, sans-serif;
+      background: var(--gray-50);
+      color: var(--gray-900);
+      -webkit-font-smoothing: antialiased;
+      -moz-osx-font-smoothing: grayscale;
+      font-size: 14px;
+      line-height: 1.5;
+    }
+
+    /* ── Layout ────────────────────────────────────────────── */
+    .shell { min-height: 100vh; display: flex; flex-direction: column; }
+
+    .top-bar {
+      height: 56px;
+      padding: 0 24px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      background: #fff;
+      border-bottom: 1px solid var(--gray-200);
+      position: sticky;
+      top: 0;
+      z-index: 50;
+    }
+
+    .brand {
+      display: inline-flex;
+      align-items: center;
+      gap: 10px;
+      font-size: 15px;
+      font-weight: 600;
+      color: var(--gray-900);
+      text-decoration: none;
+    }
+
+    .brand-mark {
+      width: 24px;
+      height: 24px;
+      border-radius: 7px;
+      background: linear-gradient(135deg, #2563eb, #22c55e);
+    }
+
+    .env-badge {
+      padding: 2px 8px;
+      border-radius: 999px;
+      font-size: 11px;
+      font-weight: 500;
+      background: var(--accent-bg);
+      color: var(--accent);
+      letter-spacing: .02em;
+    }
+
+    .layout {
+      flex: 1;
+      padding: 32px 24px 48px;
+      display: flex;
+      justify-content: center;
+    }
+
+    .layout-inner {
+      width: 100%;
+      max-width: 1080px;
+      display: grid;
+      grid-template-columns: 1fr 280px;
+      gap: 28px;
+      align-items: flex-start;
+    }
+
+    /* ── Card ──────────────────────────────────────────────── */
+    .card {
+      background: #fff;
+      border-radius: var(--radius-lg);
+      box-shadow: var(--shadow-md);
+      padding: 32px;
+    }
+
+    .eyebrow {
+      font-size: 11px;
+      letter-spacing: .1em;
+      text-transform: uppercase;
+      font-weight: 600;
+      color: var(--accent);
+      margin-bottom: 8px;
+    }
+
+    .heading {
+      font-size: 22px;
+      line-height: 1.35;
+      font-weight: 600;
+      color: var(--gray-900);
+      margin: 0 0 6px;
+    }
+
+    .intro {
+      font-size: 14px;
+      line-height: 1.65;
+      color: var(--gray-500);
+      max-width: 64ch;
+      margin: 0 0 6px;
+    }
+
+    .required-note {
+      font-size: 12px;
+      color: var(--gray-400);
+      margin: 0 0 24px;
+    }
+
+    .required-note strong { font-weight: 600; color: var(--gray-600); }
+
+    /* ── Accordion ─────────────────────────────────────────── */
+    .sections {
+      display: flex;
+      flex-direction: column;
+      gap: 0;
+      margin-bottom: 0;
+    }
+
+    .accordion-item {
+      border: 1px solid var(--gray-200);
+      border-bottom: none;
+      background: #fff;
+      overflow: hidden;
+      transition: box-shadow var(--duration) var(--ease);
+    }
+
+    .accordion-item:first-child { border-radius: var(--radius-md) var(--radius-md) 0 0; }
+    .accordion-item:last-child  { border-radius: 0 0 var(--radius-md) var(--radius-md); border-bottom: 1px solid var(--gray-200); }
+    .accordion-item:only-child  { border-radius: var(--radius-md); border-bottom: 1px solid var(--gray-200); }
+    .accordion-item.open { box-shadow: 0 2px 8px rgba(0,0,0,.03); }
+
+    .accordion-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      padding: 14px 18px;
+      cursor: pointer;
+      background: transparent;
+      border: 0;
+      width: 100%;
+      text-align: left;
+      transition: background var(--duration) var(--ease);
+    }
+
+    .accordion-header:hover { background: var(--gray-50); }
+    .accordion-header:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; border-radius: 2px; }
+
+    .accordion-header-left {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      min-width: 0;
+    }
+
+    .section-check {
+      width: 20px;
+      height: 20px;
+      border-radius: 999px;
+      border: 1.5px solid var(--gray-300);
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+      transition: all var(--duration) var(--ease);
+      color: transparent;
+    }
+
+    .section-check svg { width: 11px; height: 11px; }
+
+    .accordion-item.done .section-check {
+      background: var(--green);
+      border-color: var(--green);
+      color: #fff;
+    }
+
+    .accordion-header-text { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
+
+    .accordion-title {
+      font-size: 13px;
+      font-weight: 500;
+      color: var(--gray-900);
+    }
+
+    .accordion-item.done .accordion-title { color: var(--gray-400); }
+
+    .accordion-subtitle {
+      font-size: 12px;
+      color: var(--gray-400);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .accordion-icon {
+      width: 18px;
+      height: 18px;
+      flex-shrink: 0;
+      color: var(--gray-400);
+      transition: transform var(--duration) var(--ease);
+    }
+
+    .accordion-item.open .accordion-icon { transform: rotate(180deg); }
+
+    .accordion-body {
+      max-height: 0;
+      overflow: hidden;
+      transition: max-height 350ms var(--ease), padding 200ms ease;
+      padding: 0 18px;
+    }
+
+    .accordion-item.open .accordion-body {
+      max-height: 1200px;
+      padding: 2px 18px 18px;
+      border-top: 1px solid var(--gray-200);
+    }
+
+    .section-subcopy {
+      font-size: 12px;
+      color: var(--gray-500);
+      margin: 4px 0 14px;
+      line-height: 1.6;
+    }
+
+    /* ── Dropzone ──────────────────────────────────────────── */
+    .field { margin-bottom: 16px; }
+    .field:last-child { margin-bottom: 0; }
+
+    .field > label:first-child {
+      display: block;
+      font-size: 13px;
+      font-weight: 500;
+      color: var(--gray-700);
+      margin-bottom: 6px;
+    }
+
+    .required { color: var(--red); margin-left: 2px; }
+
+    .dropzone {
+      position: relative;
+      border: 1.5px dashed var(--gray-300);
+      border-radius: var(--radius-md);
+      background: var(--gray-50);
+      padding: 24px;
+      text-align: center;
+      cursor: pointer;
+      transition: all var(--duration) var(--ease);
+    }
+
+    .dropzone:hover {
+      border-color: var(--accent);
+      background: var(--accent-bg);
+    }
+
+    .dropzone.drag-over {
+      border-color: var(--accent);
+      border-style: solid;
+      background: var(--accent-bg);
+      box-shadow: 0 0 0 3px rgba(99,91,255,.1);
+    }
+
+    .dropzone.has-file {
+      border-style: solid;
+      border-color: var(--gray-200);
+      background: #fff;
+      padding: 12px 14px;
+      text-align: left;
+      cursor: default;
+    }
+
+    .dropzone input[type="file"] {
+      position: absolute;
+      inset: 0;
+      opacity: 0;
+      cursor: pointer;
+      z-index: 2;
+    }
+
+    .dropzone.has-file input[type="file"] { display: none; }
+
+    .dropzone-prompt { pointer-events: none; }
+
+    .dropzone-icon {
+      width: 32px;
+      height: 32px;
+      color: var(--gray-400);
+      margin: 0 auto 8px;
+      display: block;
+    }
+
+    .dropzone-text {
+      font-size: 13px;
+      color: var(--gray-500);
+      margin: 0 0 4px;
+    }
+
+    .dropzone-link {
+      color: var(--accent);
+      font-weight: 500;
+    }
+
+    .dropzone-formats {
+      font-size: 11px;
+      color: var(--gray-400);
+      margin: 0;
+    }
+
+    .dropzone-preview { display: none; }
+    .dropzone.has-file .dropzone-prompt { display: none; }
+    .dropzone.has-file .dropzone-preview { display: flex; }
+
+    /* ── File chip ─────────────────────────────────────────── */
+    .file-chip {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      width: 100%;
+    }
+
+    .file-chip-icon {
+      width: 36px;
+      height: 36px;
+      border-radius: var(--radius-sm);
+      background: var(--accent-bg);
+      color: var(--accent);
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+    }
+
+    .file-chip-icon svg { width: 18px; height: 18px; }
+
+    .file-chip-info { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px; }
+
+    .file-chip-name {
+      font-size: 13px;
+      font-weight: 500;
+      color: var(--gray-900);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .file-chip-size { font-size: 11px; color: var(--gray-400); }
+
+    .file-chip-remove {
+      width: 28px;
+      height: 28px;
+      border-radius: 999px;
+      border: none;
+      background: transparent;
+      color: var(--gray-400);
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      flex-shrink: 0;
+      transition: all 150ms var(--ease);
+      position: relative;
+      z-index: 3;
+    }
+
+    .file-chip-remove:hover { background: var(--red-bg); color: var(--red); }
+    .file-chip-remove svg { width: 14px; height: 14px; }
+
+    .hint {
+      font-size: 11px;
+      color: var(--gray-400);
+      margin: 6px 0 0;
+      line-height: 1.5;
+    }
+
+    /* ── Persona ───────────────────────────────────────────── */
+    .persona-divider {
+      margin: 24px 0;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .persona-divider::before,
+    .persona-divider::after {
+      content: "";
+      flex: 1;
+      height: 1px;
+      background: var(--gray-200);
+    }
+
+    .persona-divider-text {
+      font-size: 11px;
+      font-weight: 500;
+      color: var(--gray-400);
+      text-transform: uppercase;
+      letter-spacing: .08em;
+    }
+
+    .persona-card {
+      border: 1px solid var(--gray-200);
+      border-radius: var(--radius-md);
+      padding: 20px;
+      background: #fff;
+      display: flex;
+      gap: 16px;
+      align-items: flex-start;
+    }
+
+    .persona-icon-wrap {
+      width: 40px;
+      height: 40px;
+      border-radius: var(--radius-sm);
+      background: linear-gradient(135deg, #dbeafe, #ede9fe);
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+      color: var(--accent);
+    }
+
+    .persona-icon-wrap svg { width: 20px; height: 20px; }
+
+    .persona-content { flex: 1; min-width: 0; }
+    .persona-title { font-size: 14px; font-weight: 600; color: var(--gray-900); margin: 0 0 4px; }
+
+    .persona-description {
+      font-size: 13px;
+      color: var(--gray-500);
+      line-height: 1.6;
+      margin: 0 0 14px;
+    }
+
+    .persona-btn {
+      appearance: none;
+      border: none;
+      border-radius: var(--radius-sm);
+      padding: 8px 16px;
+      font-size: 13px;
+      font-weight: 500;
+      font-family: inherit;
+      background: var(--gray-900);
+      color: #fff;
+      cursor: pointer;
+      transition: all 150ms var(--ease);
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .persona-btn:hover { background: var(--gray-700); }
+    .persona-btn:active { transform: scale(.98); }
+    .persona-btn:disabled { opacity: .5; cursor: not-allowed; transform: none; }
+
+    .persona-status {
+      margin-top: 12px;
+      font-size: 13px;
+      font-weight: 500;
+      padding: 10px 14px;
+      border-radius: var(--radius-sm);
+      display: none;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .persona-status svg { width: 16px; height: 16px; flex-shrink: 0; }
+
+    .persona-status.status-completed {
+      display: flex;
+      color: #166534;
+      background: var(--green-bg);
+      border: 1px solid var(--green-border);
+    }
+
+    .persona-status.status-failed {
+      display: flex;
+      color: var(--red);
+      background: var(--red-bg);
+      border: 1px solid var(--red-border);
+    }
+
+    /* ── Footer ────────────────────────────────────────────── */
+    .footer {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      align-items: flex-start;
+      border-top: 1px solid var(--gray-200);
+      margin-top: 28px;
+      padding-top: 20px;
+    }
+
+    .submit-btn {
+      appearance: none;
+      border: none;
+      outline: none;
+      border-radius: var(--radius-sm);
+      height: 40px;
+      padding: 0 20px;
+      font-size: 14px;
+      font-weight: 500;
+      font-family: inherit;
+      background: var(--accent);
+      color: #fff;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      min-width: 180px;
+      transition: all 150ms var(--ease);
+    }
+
+    .submit-btn:hover:not(:disabled) { background: var(--accent-hover); }
+    .submit-btn:active:not(:disabled) { transform: scale(.98); }
+    .submit-btn:disabled { opacity: .6; cursor: not-allowed; }
+    .submit-btn:focus-visible { box-shadow: 0 0 0 3px rgba(99,91,255,.25); }
+
+    .submit-btn .spinner {
+      display: none;
+      width: 16px;
+      height: 16px;
+      border: 2px solid rgba(255,255,255,.3);
+      border-top-color: #fff;
+      border-radius: 50%;
+      animation: spin .6s linear infinite;
+    }
+
+    .submit-btn.loading .spinner { display: block; }
+    .submit-btn.loading .btn-label { visibility: hidden; }
+
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    .legal-note {
+      font-size: 11px;
+      color: var(--gray-400);
+      max-width: 56ch;
+      line-height: 1.55;
+    }
+
+    /* ── Sidebar ───────────────────────────────────────────── */
+    .rail {
+      position: sticky;
+      top: 80px;
+      background: #fff;
+      border-radius: var(--radius-lg);
+      padding: 22px 20px 18px;
+      box-shadow: var(--shadow-sm);
+    }
+
+    .rail-title { font-size: 13px; font-weight: 600; color: var(--gray-900); margin-bottom: 2px; }
+    .rail-progress-text { font-size: 12px; color: var(--gray-400); margin: 0 0 14px; }
+    .rail-progress-text span { font-weight: 600; color: var(--gray-600); }
+
+    .rail-bar-track {
+      width: 100%;
+      height: 4px;
+      border-radius: 999px;
+      background: var(--gray-100);
+      margin-bottom: 18px;
+      overflow: hidden;
+    }
+
+    .rail-bar-fill {
+      height: 100%;
+      border-radius: 999px;
+      background: var(--accent);
+      transition: width 400ms var(--ease);
+      width: 0%;
+    }
+
+    .rail-checklist {
+      list-style: none;
+      padding: 0;
+      margin: 0 0 18px;
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+    }
+
+    .rail-checklist li {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 6px 8px;
+      border-radius: 6px;
+      font-size: 12px;
+      color: var(--gray-500);
+      cursor: pointer;
+      transition: background 150ms var(--ease);
+    }
+
+    .rail-checklist li:hover { background: var(--gray-50); }
+    .rail-checklist li.active { background: var(--accent-bg); color: var(--accent); font-weight: 500; }
+    .rail-checklist li.done { color: var(--green); }
+
+    .rail-check {
+      width: 16px;
+      height: 16px;
+      border-radius: 999px;
+      border: 1.5px solid var(--gray-300);
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+      transition: all var(--duration) var(--ease);
+    }
+
+    .rail-check svg { width: 9px; height: 9px; opacity: 0; transition: opacity var(--duration) var(--ease); }
+
+    .rail-checklist li.done .rail-check { background: var(--green); border-color: var(--green); color: #fff; }
+    .rail-checklist li.done .rail-check svg { opacity: 1; }
+    .rail-checklist li.active .rail-check { border-color: var(--accent); box-shadow: 0 0 0 3px rgba(99,91,255,.1); }
+
+    .rail-divider { height: 1px; background: var(--gray-100); margin: 0 -2px 14px; }
+    .rail-help-title { font-size: 12px; font-weight: 500; color: var(--gray-700); margin-bottom: 4px; }
+    .rail-help-copy { font-size: 11px; color: var(--gray-400); margin: 0 0 10px; line-height: 1.55; }
+
+    .rail-button {
+      display: inline-flex;
+      align-items: center;
+      padding: 6px 14px;
+      font-size: 12px;
+      font-weight: 500;
+      font-family: inherit;
+      border-radius: 6px;
+      border: 1px solid var(--gray-200);
+      background: #fff;
+      color: var(--gray-700);
+      cursor: pointer;
+      transition: all 150ms var(--ease);
+    }
+
+    .rail-button:hover { background: var(--gray-50); border-color: var(--gray-300); }
+
+    /* ── Toast ─────────────────────────────────────────────── */
+    .toast-container {
+      position: fixed;
+      top: 16px;
+      right: 16px;
+      z-index: 9999;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      pointer-events: none;
+    }
+
+    .toast {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 12px 16px;
+      border-radius: var(--radius-sm);
+      background: #fff;
+      box-shadow: var(--shadow-lg);
+      font-size: 13px;
+      color: var(--gray-900);
+      pointer-events: auto;
+      animation: toastIn 300ms var(--ease);
+      max-width: 380px;
+    }
+
+    .toast.removing { animation: toastOut 250ms var(--ease) forwards; }
+
+    .toast-icon {
+      width: 20px;
+      height: 20px;
+      border-radius: 999px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+    }
+
+    .toast-icon svg { width: 12px; height: 12px; }
+    .toast--success .toast-icon { background: var(--green-bg); color: var(--green); }
+    .toast--error .toast-icon { background: var(--red-bg); color: var(--red); }
+
+    .toast-dismiss {
+      background: none;
+      border: none;
+      color: var(--gray-400);
+      cursor: pointer;
+      padding: 2px;
+      margin-left: auto;
+      flex-shrink: 0;
+    }
+
+    .toast-dismiss:hover { color: var(--gray-600); }
+    .toast-dismiss svg { width: 14px; height: 14px; }
+
+    @keyframes toastIn  { from { opacity: 0; transform: translateX(40px); } to { opacity: 1; transform: translateX(0); } }
+    @keyframes toastOut { from { opacity: 1; transform: translateX(0); } to { opacity: 0; transform: translateX(40px); } }
+
+    /* ── Responsive ────────────────────────────────────────── */
+    @media (max-width: 840px) {
+      .layout { padding: 20px 16px 32px; }
+      .layout-inner { grid-template-columns: 1fr; }
+      .rail { position: static; order: -1; }
+      .card { padding: 24px 18px; }
+    }
+  </style>
+</head>
+<body>
+
+  <div id="toast-container" class="toast-container"></div>
+
+  <div class="shell">
+    <header class="top-bar">
+      <a class="brand" href="/">
+        <!-- <div class="brand-mark"></div> -->
+        <span>Vaulta Digital</span>
+      </a>
+      <span class="env-badge">Onboarding</span>
+    </header>
+
+    <main class="layout">
+      <div class="layout-inner">
+        <div class="card">
+          <div class="eyebrow">Compliance documentation</div>
+          <h1 class="heading">Upload your onboarding documents</h1>
+          <p class="intro">
+            As part of our standard onboarding process, please provide the following compliance
+            documentation. Our team will review and contact you if clarification is needed.
+          </p>
+          <p class="required-note">
+            <strong>Note:</strong> Fields marked <span class="required">*</span> are required.
+            Accepted formats vary per section &mdash; max 10&nbsp;MB per file.
+          </p>
+
+          <form id="onboarding-form" method="post" enctype="multipart/form-data" action="/api/v1/upload_documents">
+
+            <div class="sections">
+
+              <!-- Section 1 -->
+              <div class="accordion-item open" data-accordion data-section="0">
+                <button class="accordion-header" type="button">
+                  <div class="accordion-header-left">
+                    <span class="section-check"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M20 6L9 17l-5-5"/></svg></span>
+                    <div class="accordion-header-text">
+                      <div class="accordion-title">Company registration</div>
+                      <div class="accordion-subtitle">Certificate of incorporation &amp; articles of association</div>
+                    </div>
+                  </div>
+                  <svg class="accordion-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 9l6 6 6-6"/></svg>
+                </button>
+                <div class="accordion-body">
+                  <div class="field">
+                    <label for="certificate_of_incorporation">Certificate of Incorporation<span class="required">*</span></label>
+                    <div class="dropzone" data-required="true">
+                      <input type="file" id="certificate_of_incorporation" name="certificate_of_incorporation" required accept=".pdf,.doc,.docx,.png,.jpg,.jpeg">
+                      <div class="dropzone-prompt">
+                        <svg class="dropzone-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M12 16V6m0 0l-3 3m3-3l3 3"/><path d="M20 16.7A4.5 4.5 0 0017.5 8a7 7 0 00-13.16 1.03A4.5 4.5 0 006.5 18h11a4.5 4.5 0 001.5-1.3z"/></svg>
+                        <p class="dropzone-text"><span class="dropzone-link">Click to upload</span> or drag and drop</p>
+                        <p class="dropzone-formats">PDF, DOCX, PNG, JPG</p>
+                      </div>
+                      <div class="dropzone-preview">
+                        <div class="file-chip">
+                          <span class="file-chip-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8l-6-6z"/><path d="M14 2v6h6"/></svg></span>
+                          <div class="file-chip-info"><span class="file-chip-name"></span><span class="file-chip-size"></span></div>
+                          <button type="button" class="file-chip-remove" aria-label="Remove file"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6L6 18M6 6l12 12"/></svg></button>
+                        </div>
+                      </div>
+                    </div>
+                    <p class="hint">Issued by the Registrar of Companies or equivalent authority.</p>
+                  </div>
+                  <div class="field">
+                    <label for="memorandum_and_articles">Memorandum &amp; Articles of Association<span class="required">*</span></label>
+                    <div class="dropzone" data-required="true">
+                      <input type="file" id="memorandum_and_articles" name="memorandum_and_articles" required accept=".pdf,.doc,.docx,.png,.jpg,.jpeg">
+                      <div class="dropzone-prompt">
+                        <svg class="dropzone-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M12 16V6m0 0l-3 3m3-3l3 3"/><path d="M20 16.7A4.5 4.5 0 0017.5 8a7 7 0 00-13.16 1.03A4.5 4.5 0 006.5 18h11a4.5 4.5 0 001.5-1.3z"/></svg>
+                        <p class="dropzone-text"><span class="dropzone-link">Click to upload</span> or drag and drop</p>
+                        <p class="dropzone-formats">PDF, DOCX, PNG, JPG</p>
+                      </div>
+                      <div class="dropzone-preview">
+                        <div class="file-chip">
+                          <span class="file-chip-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8l-6-6z"/><path d="M14 2v6h6"/></svg></span>
+                          <div class="file-chip-info"><span class="file-chip-name"></span><span class="file-chip-size"></span></div>
+                          <button type="button" class="file-chip-remove" aria-label="Remove file"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6L6 18M6 6l12 12"/></svg></button>
+                        </div>
+                      </div>
+                    </div>
+                    <p class="hint">Full, signed copy of your current articles.</p>
+                  </div>
+                </div>
+              </div>
+
+              <!-- Section 2 -->
+              <div class="accordion-item" data-accordion data-section="1">
+                <button class="accordion-header" type="button">
+                  <div class="accordion-header-left">
+                    <span class="section-check"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M20 6L9 17l-5-5"/></svg></span>
+                    <div class="accordion-header-text">
+                      <div class="accordion-title">Ultimate Beneficial Owners (&gt;10%)</div>
+                      <div class="accordion-subtitle">Schedule of UBOs with ownership details</div>
+                    </div>
+                  </div>
+                  <svg class="accordion-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 9l6 6 6-6"/></svg>
+                </button>
+                <div class="accordion-body">
+                  <p class="section-subcopy">Provide details of all individuals holding more than 10% of the business.</p>
+                  <div class="field">
+                    <label for="ubos_schedule">UBO schedule / register<span class="required">*</span></label>
+                    <div class="dropzone" data-required="true">
+                      <input type="file" id="ubos_schedule" name="ubos_schedule" required accept=".pdf,.doc,.docx,.xlsx,.csv">
+                      <div class="dropzone-prompt">
+                        <svg class="dropzone-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M12 16V6m0 0l-3 3m3-3l3 3"/><path d="M20 16.7A4.5 4.5 0 0017.5 8a7 7 0 00-13.16 1.03A4.5 4.5 0 006.5 18h11a4.5 4.5 0 001.5-1.3z"/></svg>
+                        <p class="dropzone-text"><span class="dropzone-link">Click to upload</span> or drag and drop</p>
+                        <p class="dropzone-formats">PDF, DOCX, XLSX, CSV</p>
+                      </div>
+                      <div class="dropzone-preview">
+                        <div class="file-chip">
+                          <span class="file-chip-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8l-6-6z"/><path d="M14 2v6h6"/></svg></span>
+                          <div class="file-chip-info"><span class="file-chip-name"></span><span class="file-chip-size"></span></div>
+                          <button type="button" class="file-chip-remove" aria-label="Remove file"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6L6 18M6 6l12 12"/></svg></button>
+                        </div>
+                      </div>
+                    </div>
+                    <p class="hint">Include full names, ownership percentages, and identification numbers.</p>
+                  </div>
+                </div>
+              </div>
+
+              <!-- Section 3 -->
+              <div class="accordion-item" data-accordion data-section="2">
+                <button class="accordion-header" type="button">
+                  <div class="accordion-header-left">
+                    <span class="section-check"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M20 6L9 17l-5-5"/></svg></span>
+                    <div class="accordion-header-text">
+                      <div class="accordion-title">Certified company profile</div>
+                      <div class="accordion-subtitle">Management team and organisational structure</div>
+                    </div>
+                  </div>
+                  <svg class="accordion-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 9l6 6 6-6"/></svg>
+                </button>
+                <div class="accordion-body">
+                  <div class="field">
+                    <label for="company_profile">Certified company profile<span class="required">*</span></label>
+                    <div class="dropzone" data-required="true">
+                      <input type="file" id="company_profile" name="company_profile" required accept=".pdf,.doc,.docx,.ppt,.pptx">
+                      <div class="dropzone-prompt">
+                        <svg class="dropzone-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M12 16V6m0 0l-3 3m3-3l3 3"/><path d="M20 16.7A4.5 4.5 0 0017.5 8a7 7 0 00-13.16 1.03A4.5 4.5 0 006.5 18h11a4.5 4.5 0 001.5-1.3z"/></svg>
+                        <p class="dropzone-text"><span class="dropzone-link">Click to upload</span> or drag and drop</p>
+                        <p class="dropzone-formats">PDF, DOCX, PPTX</p>
+                      </div>
+                      <div class="dropzone-preview">
+                        <div class="file-chip">
+                          <span class="file-chip-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8l-6-6z"/><path d="M14 2v6h6"/></svg></span>
+                          <div class="file-chip-info"><span class="file-chip-name"></span><span class="file-chip-size"></span></div>
+                          <button type="button" class="file-chip-remove" aria-label="Remove file"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6L6 18M6 6l12 12"/></svg></button>
+                        </div>
+                      </div>
+                    </div>
+                    <p class="hint">Include key management biographies and organisation chart.</p>
+                  </div>
+                </div>
+              </div>
+
+              <!-- Section 4 -->
+              <div class="accordion-item" data-accordion data-section="3">
+                <button class="accordion-header" type="button">
+                  <div class="accordion-header-left">
+                    <span class="section-check"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M20 6L9 17l-5-5"/></svg></span>
+                    <div class="accordion-header-text">
+                      <div class="accordion-title">Identification documents</div>
+                      <div class="accordion-subtitle">Passports and proof of residential address</div>
+                    </div>
+                  </div>
+                  <svg class="accordion-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 9l6 6 6-6"/></svg>
+                </button>
+                <div class="accordion-body">
+                  <p class="section-subcopy">Certified copies of valid passports and proof of address for key directors and shareholders.</p>
+                  <div class="field">
+                    <label for="id_documents">Certified ID documents<span class="required">*</span></label>
+                    <div class="dropzone" data-required="true">
+                      <input type="file" id="id_documents" name="id_documents" required accept=".pdf,.jpg,.jpeg,.png,.zip">
+                      <div class="dropzone-prompt">
+                        <svg class="dropzone-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M12 16V6m0 0l-3 3m3-3l3 3"/><path d="M20 16.7A4.5 4.5 0 0017.5 8a7 7 0 00-13.16 1.03A4.5 4.5 0 006.5 18h11a4.5 4.5 0 001.5-1.3z"/></svg>
+                        <p class="dropzone-text"><span class="dropzone-link">Click to upload</span> or drag and drop</p>
+                        <p class="dropzone-formats">PDF, JPG, PNG, ZIP</p>
+                      </div>
+                      <div class="dropzone-preview">
+                        <div class="file-chip">
+                          <span class="file-chip-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8l-6-6z"/><path d="M14 2v6h6"/></svg></span>
+                          <div class="file-chip-info"><span class="file-chip-name"></span><span class="file-chip-size"></span></div>
+                          <button type="button" class="file-chip-remove" aria-label="Remove file"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6L6 18M6 6l12 12"/></svg></button>
+                        </div>
+                      </div>
+                    </div>
+                    <p class="hint">Bundle multiple IDs into a single PDF or ZIP if needed.</p>
+                  </div>
+                </div>
+              </div>
+
+              <!-- Section 5 -->
+              <div class="accordion-item" data-accordion data-section="4">
+                <button class="accordion-header" type="button">
+                  <div class="accordion-header-left">
+                    <span class="section-check"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M20 6L9 17l-5-5"/></svg></span>
+                    <div class="accordion-header-text">
+                      <div class="accordion-title">Company proof of address</div>
+                      <div class="accordion-subtitle">Recent utility bill or similar document</div>
+                    </div>
+                  </div>
+                  <svg class="accordion-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 9l6 6 6-6"/></svg>
+                </button>
+                <div class="accordion-body">
+                  <div class="field">
+                    <label for="company_address_proof">Company proof of address<span class="required">*</span></label>
+                    <div class="dropzone" data-required="true">
+                      <input type="file" id="company_address_proof" name="company_address_proof" required accept=".pdf,.jpg,.jpeg,.png">
+                      <div class="dropzone-prompt">
+                        <svg class="dropzone-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M12 16V6m0 0l-3 3m3-3l3 3"/><path d="M20 16.7A4.5 4.5 0 0017.5 8a7 7 0 00-13.16 1.03A4.5 4.5 0 006.5 18h11a4.5 4.5 0 001.5-1.3z"/></svg>
+                        <p class="dropzone-text"><span class="dropzone-link">Click to upload</span> or drag and drop</p>
+                        <p class="dropzone-formats">PDF, JPG, PNG</p>
+                      </div>
+                      <div class="dropzone-preview">
+                        <div class="file-chip">
+                          <span class="file-chip-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8l-6-6z"/><path d="M14 2v6h6"/></svg></span>
+                          <div class="file-chip-info"><span class="file-chip-name"></span><span class="file-chip-size"></span></div>
+                          <button type="button" class="file-chip-remove" aria-label="Remove file"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6L6 18M6 6l12 12"/></svg></button>
+                        </div>
+                      </div>
+                    </div>
+                    <p class="hint">Must clearly show company name and registered address, dated within 3 months.</p>
+                  </div>
+                </div>
+              </div>
+
+              <!-- Section 6 -->
+              <div class="accordion-item" data-accordion data-section="5">
+                <button class="accordion-header" type="button">
+                  <div class="accordion-header-left">
+                    <span class="section-check"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M20 6L9 17l-5-5"/></svg></span>
+                    <div class="accordion-header-text">
+                      <div class="accordion-title">Regulatory information</div>
+                      <div class="accordion-subtitle">Operating licence or LONO (if applicable)</div>
+                    </div>
+                  </div>
+                  <svg class="accordion-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 9l6 6 6-6"/></svg>
+                </button>
+                <div class="accordion-body">
+                  <p class="section-subcopy">If regulated, provide a copy of your operating licence or letter of no objection.</p>
+                  <div class="field">
+                    <label for="regulatory_information">Regulatory licence / LONO</label>
+                    <div class="dropzone">
+                      <input type="file" id="regulatory_information" name="regulatory_information" accept=".pdf,.doc,.docx,.jpg,.jpeg,.png">
+                      <div class="dropzone-prompt">
+                        <svg class="dropzone-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M12 16V6m0 0l-3 3m3-3l3 3"/><path d="M20 16.7A4.5 4.5 0 0017.5 8a7 7 0 00-13.16 1.03A4.5 4.5 0 006.5 18h11a4.5 4.5 0 001.5-1.3z"/></svg>
+                        <p class="dropzone-text"><span class="dropzone-link">Click to upload</span> or drag and drop</p>
+                        <p class="dropzone-formats">PDF, DOCX, JPG</p>
+                      </div>
+                      <div class="dropzone-preview">
+                        <div class="file-chip">
+                          <span class="file-chip-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8l-6-6z"/><path d="M14 2v6h6"/></svg></span>
+                          <div class="file-chip-info"><span class="file-chip-name"></span><span class="file-chip-size"></span></div>
+                          <button type="button" class="file-chip-remove" aria-label="Remove file"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6L6 18M6 6l12 12"/></svg></button>
+                        </div>
+                      </div>
+                    </div>
+                    <p class="hint">Optional — only where a regulatory licence or LONO applies.</p>
+                  </div>
+                </div>
+              </div>
+
+              <!-- Section 7 -->
+              <div class="accordion-item" data-accordion data-section="6">
+                <button class="accordion-header" type="button">
+                  <div class="accordion-header-left">
+                    <span class="section-check"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M20 6L9 17l-5-5"/></svg></span>
+                    <div class="accordion-header-text">
+                      <div class="accordion-title">Source of funds</div>
+                      <div class="accordion-subtitle">Bank statements or statement of good standing</div>
+                    </div>
+                  </div>
+                  <svg class="accordion-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 9l6 6 6-6"/></svg>
+                </button>
+                <div class="accordion-body">
+                  <p class="section-subcopy">Latest 3 months' bank statements or a statement of good standing (not older than 6 months).</p>
+                  <div class="field">
+                    <label for="source_of_funds">Source of funds documentation<span class="required">*</span></label>
+                    <div class="dropzone" data-required="true">
+                      <input type="file" id="source_of_funds" name="source_of_funds" required accept=".pdf,.csv,.zip">
+                      <div class="dropzone-prompt">
+                        <svg class="dropzone-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M12 16V6m0 0l-3 3m3-3l3 3"/><path d="M20 16.7A4.5 4.5 0 0017.5 8a7 7 0 00-13.16 1.03A4.5 4.5 0 006.5 18h11a4.5 4.5 0 001.5-1.3z"/></svg>
+                        <p class="dropzone-text"><span class="dropzone-link">Click to upload</span> or drag and drop</p>
+                        <p class="dropzone-formats">PDF, CSV, ZIP</p>
+                      </div>
+                      <div class="dropzone-preview">
+                        <div class="file-chip">
+                          <span class="file-chip-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8l-6-6z"/><path d="M14 2v6h6"/></svg></span>
+                          <div class="file-chip-info"><span class="file-chip-name"></span><span class="file-chip-size"></span></div>
+                          <button type="button" class="file-chip-remove" aria-label="Remove file"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6L6 18M6 6l12 12"/></svg></button>
+                        </div>
+                      </div>
+                    </div>
+                    <p class="hint">Combine multiple statements into a single PDF or ZIP.</p>
+                  </div>
+                </div>
+              </div>
+
+            </div>
+
+            <!-- Identity verification -->
+            <div class="persona-divider"><span class="persona-divider-text">Identity verification</span></div>
+
+            <div class="persona-card" id="persona-section" data-section="7">
+              <span class="persona-icon-wrap">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><path d="M9 12l2 2 4-4"/></svg>
+              </span>
+              <div class="persona-content">
+                <p class="persona-title">Verify your identity</p>
+                <p class="persona-description">
+                  Complete a quick identity check powered by Persona.
+                  Have a valid government-issued ID ready — the process takes about 2 minutes.
+                </p>
+                <button type="button" id="persona-verify-btn" class="persona-btn">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+                  Start verification
+                </button>
+                <div id="persona-status" class="persona-status">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 6L9 17l-5-5"/></svg>
+                  <span id="persona-status-text"></span>
+                </div>
+                <input type="hidden" id="persona_inquiry_id" name="persona_inquiry_id" value="">
+              </div>
+            </div>
+
+            <div class="footer">
+              <button type="submit" class="submit-btn" id="submit-btn">
+                <span class="btn-label">Submit documents</span>
+                <span class="spinner"></span>
+              </button>
+              <p class="legal-note">
+                By submitting you confirm the information provided is accurate, complete, and up to date.
+                Our team will review and contact you if clarification is needed.
+              </p>
+            </div>
+
+          </form>
+        </div>
+
+        <!-- Sidebar -->
+        <aside class="rail">
+          <div class="rail-title">Document checklist</div>
+          <p class="rail-progress-text"><span id="rail-count">0</span> of <span id="rail-total">8</span> complete</p>
+          <div class="rail-bar-track"><div class="rail-bar-fill" id="rail-bar"></div></div>
+          <ul class="rail-checklist" id="rail-checklist">
+            <li class="active" data-rail="0"><span class="rail-check"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M20 6L9 17l-5-5"/></svg></span>Company registration</li>
+            <li data-rail="1"><span class="rail-check"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M20 6L9 17l-5-5"/></svg></span>Beneficial owners</li>
+            <li data-rail="2"><span class="rail-check"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M20 6L9 17l-5-5"/></svg></span>Company profile</li>
+            <li data-rail="3"><span class="rail-check"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M20 6L9 17l-5-5"/></svg></span>ID documents</li>
+            <li data-rail="4"><span class="rail-check"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M20 6L9 17l-5-5"/></svg></span>Proof of address</li>
+            <li data-rail="5"><span class="rail-check"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M20 6L9 17l-5-5"/></svg></span>Regulatory info</li>
+            <li data-rail="6"><span class="rail-check"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M20 6L9 17l-5-5"/></svg></span>Source of funds</li>
+            <li data-rail="7"><span class="rail-check"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M20 6L9 17l-5-5"/></svg></span>Identity verification</li>
+          </ul>
+          <div class="rail-divider"></div>
+          <div class="rail-help-title">Need help?</div>
+          <p class="rail-help-copy">Not sure what to upload? Reach out and we'll guide you through the process.</p>
+          <button type="button" class="rail-button" onclick="window.open('mailto:support@vaulta.digital')">Contact support</button>
+        </aside>
+
+      </div>
+    </main>
+  </div>
+
+  <script>
+  (function () {
+    'use strict';
+
+    // ── Helpers ──────────────────────────────────────────────
+    function formatBytes(b) {
+      if (b === 0) return '0 B';
+      var k = 1024, s = ['B','KB','MB'], i = Math.floor(Math.log(b) / Math.log(k));
+      return parseFloat((b / Math.pow(k, i)).toFixed(1)) + ' ' + s[i];
+    }
+
+    // ── Toast ───────────────────────────────────────────────
+    var toastBox = document.getElementById('toast-container');
+    function showToast(msg, type) {
+      type = type || 'success';
+      var t = document.createElement('div');
+      t.className = 'toast toast--' + type;
+      t.innerHTML =
+        '<span class="toast-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">' +
+        (type === 'success' ? '<path d="M20 6L9 17l-5-5"/>' : '<path d="M18 6L6 18M6 6l12 12"/>') +
+        '</svg></span><span>' + msg + '</span>' +
+        '<button class="toast-dismiss" aria-label="Dismiss"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6L6 18M6 6l12 12"/></svg></button>';
+      toastBox.appendChild(t);
+      var dismiss = function () { t.classList.add('removing'); setTimeout(function () { t.remove(); }, 260); };
+      t.querySelector('.toast-dismiss').addEventListener('click', dismiss);
+      setTimeout(dismiss, 4500);
+    }
+
+    // ── Section tracking ────────────────────────────────────
+    var accItems = Array.from(document.querySelectorAll('.accordion-item[data-section]'));
+    var sectionDone = {};
+    var personaDone = false;
+
+    function updateProgress() {
+      // Check each section for filled dropzones
+      accItems.forEach(function (item) {
+        var idx = parseInt(item.dataset.section, 10);
+        var requiredZones = item.querySelectorAll('.dropzone[data-required]');
+        var allFilled = true;
+        if (requiredZones.length) {
+          requiredZones.forEach(function (dz) { if (!dz.classList.contains('has-file')) allFilled = false; });
+        } else {
+          allFilled = !!item.querySelector('.dropzone.has-file');
+        }
+        sectionDone[idx] = allFilled;
+        item.classList.toggle('done', allFilled);
+      });
+
+      var done = 0;
+      for (var i = 0; i < 7; i++) { if (sectionDone[i]) done++; }
+      if (personaDone) done++;
+
+      document.getElementById('rail-count').textContent = done;
+      document.getElementById('rail-bar').style.width = Math.round((done / 8) * 100) + '%';
+
+      document.querySelectorAll('#rail-checklist li').forEach(function (li) {
+        var r = parseInt(li.dataset.rail, 10);
+        li.classList.toggle('done', r < 7 ? !!sectionDone[r] : personaDone);
+      });
+    }
+    window.__setPersonaDone = function () { personaDone = true; updateProgress(); };
+
+    // ── Accordion ───────────────────────────────────────────
+    function openSection(item) {
+      accItems.forEach(function (o) { o.classList.remove('open'); });
+      if (item) item.classList.add('open');
+      // Update rail active
+      document.querySelectorAll('#rail-checklist li').forEach(function (li) { li.classList.remove('active'); });
+      if (item) {
+        var t = document.querySelector('#rail-checklist li[data-rail="' + item.dataset.section + '"]');
+        if (t) t.classList.add('active');
+      }
+    }
+
+    accItems.forEach(function (item) {
+      item.querySelector('.accordion-header').addEventListener('click', function () {
+        item.classList.contains('open') ? openSection(null) : openSection(item);
+      });
+    });
+
+    // Sidebar nav
+    document.querySelectorAll('#rail-checklist li').forEach(function (li) {
+      li.addEventListener('click', function () {
+        var idx = parseInt(li.dataset.rail, 10);
+        if (idx < 7) {
+          var target = document.querySelector('.accordion-item[data-section="' + idx + '"]');
+          if (target) { openSection(target); target.scrollIntoView({ behavior: 'smooth', block: 'center' }); }
+        } else {
+          accItems.forEach(function (a) { a.classList.remove('open'); });
+          document.getElementById('persona-section').scrollIntoView({ behavior: 'smooth', block: 'center' });
+          document.querySelectorAll('#rail-checklist li').forEach(function (l) { l.classList.remove('active'); });
+          li.classList.add('active');
+        }
+      });
+    });
+
+    // ── Dropzone: drag & drop + preview ─────────────────────
+    document.querySelectorAll('.dropzone').forEach(function (dz) {
+      var input = dz.querySelector('input[type="file"]');
+      var nameEl = dz.querySelector('.file-chip-name');
+      var sizeEl = dz.querySelector('.file-chip-size');
+      var removeBtn = dz.querySelector('.file-chip-remove');
+
+      function showFile(file) {
+        if (!file) return;
+        nameEl.textContent = file.name;
+        sizeEl.textContent = formatBytes(file.size);
+        dz.classList.add('has-file');
+        updateProgress();
+        // Auto-advance
+        setTimeout(function () {
+          var sec = dz.closest('.accordion-item[data-section]');
+          if (!sec) return;
+          var allDone = true;
+          sec.querySelectorAll('.dropzone').forEach(function (d) { if (!d.classList.contains('has-file')) allDone = false; });
+          if (allDone) {
+            var next = document.querySelector('.accordion-item[data-section="' + (parseInt(sec.dataset.section, 10) + 1) + '"]');
+            if (next && !next.classList.contains('done')) { openSection(next); next.scrollIntoView({ behavior: 'smooth', block: 'center' }); }
+          }
+        }, 400);
+      }
+
+      function clearFile() {
+        input.value = '';
+        nameEl.textContent = '';
+        sizeEl.textContent = '';
+        dz.classList.remove('has-file');
+        updateProgress();
+      }
+
+      input.addEventListener('change', function () { if (this.files && this.files[0]) showFile(this.files[0]); });
+      if (removeBtn) removeBtn.addEventListener('click', function (e) { e.stopPropagation(); clearFile(); });
+
+      ['dragenter','dragover'].forEach(function (ev) {
+        dz.addEventListener(ev, function (e) { e.preventDefault(); e.stopPropagation(); if (!dz.classList.contains('has-file')) dz.classList.add('drag-over'); });
+      });
+      ['dragleave','drop'].forEach(function (ev) {
+        dz.addEventListener(ev, function (e) { e.preventDefault(); e.stopPropagation(); dz.classList.remove('drag-over'); });
+      });
+
+      dz.addEventListener('drop', function (e) {
+        if (dz.classList.contains('has-file')) return;
+        var files = e.dataTransfer.files;
+        if (files && files[0]) {
+          var accept = input.getAttribute('accept');
+          if (accept) {
+            var ext = '.' + files[0].name.split('.').pop().toLowerCase();
+            if (accept.split(',').map(function (s) { return s.trim().toLowerCase(); }).indexOf(ext) === -1) {
+              showToast('File type not accepted. Allowed: ' + accept, 'error');
+              return;
+            }
+          }
+          if (files[0].size > 10 * 1024 * 1024) { showToast('File exceeds 10 MB limit.', 'error'); return; }
+          var dt = new DataTransfer();
+          dt.items.add(files[0]);
+          input.files = dt.files;
+          showFile(files[0]);
+        }
+      });
+    });
+
+    // ── Form submit ─────────────────────────────────────────
+    var form = document.getElementById('onboarding-form');
+    var submitBtn = document.getElementById('submit-btn');
+
+    form.addEventListener('submit', async function (e) {
+      e.preventDefault();
+      submitBtn.classList.add('loading');
+      submitBtn.disabled = true;
+      try {
+        var resp = await fetch('/api/v1/upload_documents', { method: 'POST', body: new FormData(form) });
+        var result = await resp.json();
+        if (resp.ok) {
+          submitBtn.querySelector('.btn-label').textContent = 'Submitted';
+          showToast(result.message || 'Documents uploaded successfully.', 'success');
+        } else {
+          submitBtn.classList.remove('loading');
+          submitBtn.disabled = false;
+          showToast(result.detail || 'Upload failed. Please try again.', 'error');
+        }
+      } catch (err) {
+        submitBtn.classList.remove('loading');
+        submitBtn.disabled = false;
+        showToast('Network error. Please check your connection.', 'error');
+      }
+    });
+
+    updateProgress();
+  })();
+  </script>
+
+  <!-- Persona embedded flow SDK -->
+  <script src="https://cdn.withpersona.com/dist/persona-v5.0.0.js"></script>
+  <script>
+  (function () {
+    'use strict';
+    var PERSONA_TEMPLATE_ID = 'itmpl_GaCPhXyZWYjYhdKLHhoYMd59mNUE';
+    var PERSONA_ENVIRONMENT = 'production';
+    var btn = document.getElementById('persona-verify-btn');
+    var statusEl = document.getElementById('persona-status');
+    var statusText = document.getElementById('persona-status-text');
+    var hidden = document.getElementById('persona_inquiry_id');
+
+    btn.addEventListener('click', function () {
+      btn.disabled = true;
+      btn.textContent = 'Loading\u2026';
+      var client = new Persona.Client({
+        templateId: PERSONA_TEMPLATE_ID,
+        environment: PERSONA_ENVIRONMENT,
+        onReady: function () { btn.textContent = 'Verification in progress\u2026'; client.open(); },
+        onComplete: function (d) {
+          hidden.value = d.inquiryId || '';
+          statusEl.className = 'persona-status status-completed';
+          statusText.textContent = 'Identity verified successfully.';
+          btn.style.display = 'none';
+          if (typeof window.__setPersonaDone === 'function') window.__setPersonaDone();
+          fetch('/api/v1/persona/inquiry_complete', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ inquiry_id: d.inquiryId || '', status: 'completed' }),
+          }).catch(function () {});
+        },
+        onFail: function (d) {
+          hidden.value = d.inquiryId || '';
+          statusEl.className = 'persona-status status-failed';
+          statusText.textContent = 'Verification could not be completed. Please try again.';
+          btn.disabled = false;
+          btn.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg> Retry verification';
+        },
+        onCancel: function () {
+          btn.disabled = false;
+          btn.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg> Start verification';
+        },
+      });
+    });
+  })();
+  </script>
+</body>
+</html>

@@ -26,4 +26,13 @@ class Settings(BaseSettings):
     BRIDGE_LIVE_API_KEY: Optional[str] = None
     ENV: str = "DEV"
 
+    # Firebase
+    FIREBASE_STORAGE_BUCKET: Optional[str] = None
+    FIREBASE_CREDENTIALS_PATH: Optional[str] = None
+
+    # Persona
+    PERSONA_API_KEY: Optional[str] = None
+    PERSONA_TEMPLATE_ID: Optional[str] = None
+    PERSONA_ENVIRONMENT: str = "sandbox"
+
 settings = Settings()

@@ -2,6 +2,7 @@ import os
 from fastapi import FastAPI, HTTPException, Depends, Header, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
+from httpcore import request
 from pydantic import BaseModel, EmailStr
 from typing import Dict, List, Annotated, Optional
 import secrets
@@ -23,7 +24,7 @@ import models
 from sqlalchemy.orm import Session
 
 from services import get_customer_by_email, issue_jwt_token, send_otp_to_email_for_login
-from utils import generate_otp, send_email, send_slack, send_private_slack
+from utils import generate_otp, send_email, send_slack, send_private_slack, send_slack_message
 from fastapi import Body
 import hashlib
 import jwt
@@ -32,9 +33,10 @@ from fastapi.security import OAuth2PasswordBearer
 from ovex_apis import create_quote, get_trade_history
 from ovex_apis import get_markets
 from redis_client import r
-from fastapi import Query
+from fastapi import Query, File, UploadFile
 from fastapi import Request
 import inspect
+from firebase_storage import upload_documents
 
 app = FastAPI()
 
@@ -464,6 +466,55 @@ async def register(user_data: UserCreate, db: Session = Depends(get_db)):
         "phone": new_customer.phone,
         "dashboard":{}
     }
+
+@app.post("/api/v1/upload_documents")
+async def upload_onboarding_documents(
+    certificate_of_incorporation: UploadFile = File(None),
+    memorandum_and_articles: UploadFile = File(None),
+    ubos_schedule: UploadFile = File(None),
+    company_profile: UploadFile = File(None),
+    id_documents: UploadFile = File(None),
+    company_address_proof: UploadFile = File(None),
+    regulatory_information: UploadFile = File(None),
+    source_of_funds: UploadFile = File(None),
+):
+    files = {
+        "certificate_of_incorporation": certificate_of_incorporation,
+        "memorandum_and_articles": memorandum_and_articles,
+        "ubos_schedule": ubos_schedule,
+        "company_profile": company_profile,
+        "id_documents": id_documents,
+        "company_address_proof": company_address_proof,
+        "regulatory_information": regulatory_information,
+        "source_of_funds": source_of_funds,
+    }
+
+    # Filter out empty submissions
+    provided = {k: v for k, v in files.items() if v is not None and v.filename}
+    if not provided:
+        raise HTTPException(status_code=400, detail="No documents were provided.")
+
+    try:
+        urls = await upload_documents(provided, folder="onboarding")
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+    return JSONResponse(
+        status_code=200,
+        content={
+            "message": f"{len(urls)} document(s) uploaded successfully.",
+            "documents": urls,
+        },
+    )
+
+class PersonaInquiryComplete(BaseModel):
+    inquiry_id: str
+    status: str
+
+@app.post("/api/v1/persona/inquiry_complete")
+async def persona_inquiry_complete(data: PersonaInquiryComplete):
+    print(f"Persona inquiry completed: {data.inquiry_id} — status: {data.status}")
+    return {"message": "Inquiry recorded", "inquiry_id": data.inquiry_id, "status": data.status}
 
 @app.get("/")
 async def root():
@@ -1594,3 +1645,20 @@ async def get_trade_total_route(token: str = Depends(oauth2_scheme), db: Session
         "total_to_amount": total_to_amount,
         "count": len(trades)
     }
+    
+@app.post("/api/v1/notify")
+async def notify_slack(data: dict = Body(...)):
+    # Extract headers and query parameters
+    headers = dict(request.headers) if hasattr(request, 'headers') else {}
+    
+    params = dict(request.query_params) if hasattr(request, 'query_params') else {}
+
+    # Log the incoming notification with headers and params
+    message = f"Received notification with headers: {headers}\nNotification data: {data}\nParams: {params}"
+    print(message)
+    
+    try:
+        send_slack_message("rates",f"UNROUTED NOTIFICATION: {message}")
+        return {"message": "Notification sent to Slack", "data": message}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to send notification: {str(e)}")

@@ -72,3 +72,28 @@ def send_private_slack(message):
     except Exception as e:
         print(e)
         return False
+    
+def send_slack_message(channel: str, message: str, token: str = None):
+    """Send a message to Slack using the chat.postMessage API"""
+    if token is None:
+        token = os.getenv('SLACK_BOT_TOKEN')
+    
+    try:
+        headers = {
+            'Authorization': f'Bearer {token}',
+            'Content-Type': 'application/json'
+        }
+        payload = {
+            'channel': channel,
+            'text': message
+        }
+        response = requests.post(
+            'https://slack.com/api/chat.postMessage',
+            json=payload,
+            headers=headers
+        )
+        print(f"Slack API response: {response.status_code}")
+        return response.json()
+    except Exception as e:
+        print(f"Error sending Slack message via API: {e}")
+        return False
