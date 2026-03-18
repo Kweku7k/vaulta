@@ -1,7 +1,7 @@
 import os
 from fastapi import FastAPI, HTTPException, Depends, Header, status
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, FileResponse
 from httpcore import request
 from pydantic import BaseModel, EmailStr
 from typing import Dict, List, Annotated, Optional
@@ -470,6 +470,10 @@ async def register(user_data: UserCreate, db: Session = Depends(get_db)):
     }
 
 # ── Onboarding (no auth — users don't have accounts yet) ─────
+
+@app.get("/onboarding", include_in_schema=False)
+async def onboarding_page():
+    return FileResponse("templates/onboarding.html", media_type="text/html")
 
 @app.get("/api/v1/onboarding/start")
 async def start_onboarding(db: Session = Depends(get_db)):

@@ -1270,7 +1270,7 @@
 
       input.addEventListener('change', function () { if (this.files && this.files[0]) showFile(this.files[0]); });
       if (removeBtn) removeBtn.addEventListener('click', function (e) { e.stopPropagation(); clearFile(); });
-
+      
       ['dragenter','dragover'].forEach(function (ev) {
         dz.addEventListener(ev, function (e) { e.preventDefault(); e.stopPropagation(); if (!dz.classList.contains('has-file')) dz.classList.add('drag-over'); });
       });
