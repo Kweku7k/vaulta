@@ -43,9 +43,51 @@ from core.config import settings
 app = FastAPI()
 
 import logging
+import traceback
 
-logger = logging.getLogger("vaulta.onboarding")
-logging.basicConfig(level=logging.INFO, format="%(asctime)s %(name)s %(levelname)s %(message)s")
+# Configure logging
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s %(name)s %(levelname)s %(message)s"
+)
+
+# Create loggers for different modules
+logger_onboarding = logging.getLogger("vaulta.onboarding")
+logger_auth = logging.getLogger("vaulta.auth")
+logger_payments = logging.getLogger("vaulta.payments")
+logger_accounts = logging.getLogger("vaulta.accounts")
+logger_transactions = logging.getLogger("vaulta.transactions")
+logger_errors = logging.getLogger("vaulta.errors")
+logger = logger_onboarding  # Keep for backward compatibility
+
+# Global exception handler
+@app.exception_handler(Exception)
+async def global_exception_handler(request: Request, exc: Exception):
+    error_id = str(uuid.uuid4())
+    error_msg = str(exc)
+    tb = traceback.format_exc()
+    
+    logger_errors.error(f"[{error_id}] {exc.__class__.__name__}: {error_msg}\n{tb}")
+    
+    # Send to Slack
+    try:
+        slack_message = f"🚨 *Backend Error* [{error_id}]\nPath: {request.url.path}\nMethod: {request.method}\nError: {error_msg}"
+        send_slack_message("rates", slack_message)
+    except Exception as slack_err:
+        logger_errors.error(f"Failed to send error to Slack: {slack_err}")
+    
+    return JSONResponse(
+        status_code=500,
+        content={"message": "Internal server error", "error_id": error_id}
+    )
+
+@app.exception_handler(HTTPException)
+async def http_exception_handler(request: Request, exc: HTTPException):
+    logger_errors.warning(f"HTTP {exc.status_code}: {exc.detail} at {request.url.path}")
+    return JSONResponse(
+        status_code=exc.status_code,
+        content={"detail": exc.detail}
+    )
 
 # Add the middleware near the top of your stack
 # app.add_middleware(
@@ -199,61 +241,42 @@ def get_db():
 
 @app.post("/login", response_model=ApiResponse, status_code=status.HTTP_200_OK)
 async def login(user_data: UserLogin, db: Session = Depends(get_db)):
-    # In a real application, you would:
-    # 1. Retrieve the user from a database
-    # 2. Verify the password using a secure hashing algorithm
-    # 3. Generate a proper JWT token
-    
-    print("Starting login process...")
+    logger_auth.info(f"[login] Request received for email: {user_data.email}")
     
     email = user_data.email
-    print("email")
-    print(email)
-    print(f"Attempting login for email: {email}")
-    
-    print("Fetching user from database...")
     user = get_customer_by_email(email, db)
-    print(f"User found: {user is not None}")
+    logger_auth.info(f"[login] User lookup: {'found' if user else 'not found'} for {email}")
     
     if not user:
-        print("User not found in database")
-        send_private_slack(f"EMAIL: {user.email} was not found")
+        logger_auth.warning(f"[login] Failed login attempt - user not found: {email}")
+        send_private_slack(f"❌ Login attempt failed - user not found: {email}")
         return JSONResponse(
         status_code=404,
         content={"message": "User was not found"}
     )
     
-    print("Sending OTP email...")
-    # email_response = send_otp_to_email_for_login(user, db)
-    
     otp = generate_otp()
     to = [user.email]
     
-    # hash the otp
-    # hashed_otp = hashlib.sha256(otp.encode()).hexdigest()
-    
-    # update user body with password
     user.password = otp
     db.commit()
     db.refresh(user)
+    logger_auth.info(f"[login] OTP generated and stored for user: {email}")
     
-    send_email("otp.html", f"OTP - {otp}", to, {"name":user.first_name, "otp":otp})
-    print("email_response")
+    try:
+        send_email("otp.html", f"OTP - {otp}", to, {"name":user.first_name, "otp":otp})
+        logger_auth.info(f"[login] OTP email sent successfully to {email}")
+    except Exception as e:
+        logger_auth.error(f"[login] Failed to send OTP email to {email}: {e}")
+        send_private_slack(f"⚠️ Failed to send OTP email to {email}")
     
-    send_private_slack(f"Login attempt for email: {email} OTP: {otp}")
-
-    
-    print("Generating token...")
-    # Generate a token (use a proper JWT in production)
+    send_private_slack(f"✅ Login OTP generated for: {email}")
     
     token = secrets.token_hex(32)
-    print(f"Token generated: {token[:10]}...")
-    
     save_access_token(token, str(user.id))
+    save_user_otp(str(user.id), otp)
     
-    save_user_otp(str(user.id),otp)  
-    
-    print("Login process completed successfully")
+    logger_auth.info(f"[login] Login successful - token issued for: {email}")
     return JSONResponse(
         status_code=200,
         content={"message": f"OTP has been sent to {user.first_name}","access_token": token, "token_type": "bearer"}
@@ -280,63 +303,34 @@ class VerifyOtpBody(BaseModel):
 
 @app.post("/verify-otp")
 async def verify_otp(body: VerifyOtpBody, db: Session = Depends(get_db)):
-    # 1) Get token from header
-    print(f"Received token: {body.token}")
+    logger_auth.info(f"[verify-otp] OTP verification request received")
+    
     token = body.token
     if not token:
-        print("Missing or invalid Authorization header")
+        logger_auth.warning(f"[verify-otp] Missing access token")
         raise HTTPException(status_code=401, detail="Missing or invalid Authorization header")
 
-    # 2) Lookup user_id in Redis
     user_id = authstore.get_user_id_from_token(token)
-    print(f"User ID from token: {user_id}")
+    logger_auth.info(f"[verify-otp] Token resolved to user: {user_id}")
     
     user = authstore.get_user_by_id(user_id)
-    print("===user===")
-    print(user)
     
     if not user_id:
-        print("Invalid or expired access token")
+        logger_auth.warning(f"[verify-otp] Invalid or expired token")
         raise HTTPException(status_code=401, detail="Invalid or expired access token")
 
-    # 3) Fetch expected OTP (from Redis or DB)
     expected_otp = authstore.get_user_otp(user_id)
-    print("Expected OTP: ", expected_otp)
-    
-    # decode the hashed password
-    if expected_otp:
-        provided_otp = "123456"
-        provided_hashed = hashlib.sha256(provided_otp.encode()).hexdigest()
-        print("Provided Hash:", provided_hashed)
-    # If stored in Redis:
-    # expected_otp = user.otp
-    # If stored in DB instead:
-    
-    # if you stored it in Redis
-    print(f"Expected OTP for user {user_id}: {expected_otp}")
-    # If stored in DB instead:
-    # user = db.query(models.User).get(user_id)
-    # expected_otp = user.verification_token
+    logger_auth.info(f"[verify-otp] OTP lookup for user {user_id}")
 
     if not expected_otp or body.otp != expected_otp:
-        print(f"Invalid OTP. Provided: {body.otp}, Expected: {expected_otp}")
+        logger_auth.warning(f"[verify-otp] Invalid OTP provided for user {user_id}")
         raise HTTPException(status_code=400, detail="Invalid OTP")
 
-    # 4) Success: clear OTP, optionally rotate the token or upgrade session
-    print(f"OTP verified for user {user_id}. Clearing OTP...")
     authstore.clear_user_otp(user_id)
-    
-    # Optionally: issue a longer-lived JWT here and/or revoke the short-lived token.
-    # JWT settings
     jwt_response = issue_jwt_token(user_id)
-    print("==jwt_response==")
-    
-    print(jwt_response)
-    
     jwt_response['user'] = user
 
-    print("OTP verification successful")
-    # return {"message": "OTP verified", "user_id": user_id}
+    logger_auth.info(f"[verify-otp] OTP verified successfully for user {user_id}")
     return jwt_response
 
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="login")
@@ -354,26 +348,24 @@ def get_authenticated_user_id(token: str = Depends(oauth2_scheme)) -> str:
 
 @app.get("/account", response_model=UserResponse)
 async def get_account(token: str = Depends(oauth2_scheme), db: Session = Depends(get_db)):
-    print("Decoding JWT token...")
+    logger_auth.info("[account] Token decode attempt")
     try:
         payload = jwt.decode(token, os.getenv("JWT_SECRET", "your_jwt_secret"), algorithms=["HS256"])
-        print("JWT payload:", payload)
         user_id = payload.get("sub")
-        print("Extracted user_id from token:", user_id)
+        logger_auth.info(f"[account] User ID extracted: {user_id}")
         if not user_id:
-            print("Invalid token: user_id missing")
+            logger_auth.warning("[account] Invalid token: no user_id")
             raise HTTPException(status_code=401, detail="Invalid token")
     except jwt.PyJWTError as e:
-        print("JWT decode error:", str(e))
+        logger_auth.error(f"[account] JWT error: {e}")
         raise HTTPException(status_code=401, detail="Invalid token")
 
-    print("Querying user from database with user_id:", user_id)
     user = db.query(models.User).filter(models.User.id == user_id).first()
     
     if not user:
-        print("User not found for user_id:", user_id)
+        logger_auth.warning(f"[account] User not found: {user_id}")
         raise HTTPException(status_code=404, detail="User not found")
-    print("User found:", user)
+    logger_auth.info(f"[account] Account retrieved for {user.email}")
     
     return {
         "id": str(user.id),
@@ -426,20 +418,18 @@ async def get_account(token: str = Depends(oauth2_scheme), db: Session = Depends
 @app.post("/register", response_model=UserResponse, status_code=status.HTTP_201_CREATED)
 async def register(user_data: UserCreate, db: Session = Depends(get_db)):
     
-    # Check if email already exists
-    print("Checking if email exists:", user_data.email)
-    # if user_data.email in users_db:
-        
+    logger_auth.info(f"[register] New registration: {user_data.email}")
+    
     existing = db.query(models.User).filter(models.User.email == user_data.email).first()
     if existing:
-        print("Email already registered")
+        logger_auth.warning(f"[register] Email already registered: {user_data.email}")
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Email already registered"
         )
     
     user_id = secrets.token_hex(8)
-    print("Generated user ID:", user_id)
+    logger_auth.info(f"[register] Generated user ID: {user_id}")
     
     new_customer = models.User(
         id = user_id,
@@ -1169,26 +1159,21 @@ async def create_payment(
     ):
     
     BASE_URL="https://dashboard.vaulta.digital"
+    logger_payments.info(f"[create_payment] Payment request received: {data.amount} {data.currency}")
     
-    """
-    Create a new payment to a stablecoin address.
-    """
-    
-    print("Received payment request data:", data)
     try:
         payload = jwt.decode(token, os.getenv("JWT_SECRET", "your_jwt_secret"), algorithms=["HS256"])
         user_id = payload.get("sub")
-        print("Decoded JWT payload:", payload)
+        logger_payments.info(f"[create_payment] User authenticated: {user_id}")
         
         if not user_id:
-            print("Invalid token: user_id missing")
+            logger_payments.warning(f"[create_payment] Invalid token: user_id missing")
             raise HTTPException(status_code=401, detail="Invalid token")
         
     except jwt.PyJWTError as e:
-        print("JWT decode error:", str(e))
+        logger_payments.error(f"[create_payment] JWT decode error: {e}")
         raise HTTPException(status_code=401, detail="Invalid token")
 
-    print("Verifying source account...")
     source_account = db.query(models.Account).filter(
         models.Account.id == data.source_account_id,
         models.Account.user_id == user_id,
@@ -1196,31 +1181,24 @@ async def create_payment(
     ).first()
     
     if not source_account:
-        print("Source account not found for user:", user_id)
+        logger_payments.warning(f"[create_payment] Source account not found: {data.source_account_id}")
         raise HTTPException(status_code=404, detail="Source account not found")
 
-    print("==source_account")
-    print(source_account.id)
-    print(source_account.user)  
-    # print(source_account.user.email)
-    
-    # get user by id
     user = db.query(models.User).filter(models.User.id == user_id).first()
     if not user:
+        logger_payments.error(f"[create_payment] User not found: {user_id}")
         raise HTTPException(status_code=404, detail="User not found")
 
     payment_id = f"pay_{uuid.uuid4().hex[:8].upper()}"
-    print("Generated payment ID:", payment_id)
+    logger_payments.info(f"[create_payment] Generated payment ID: {payment_id}")
     
     network_fee = PaymentFee(
         type="network",
-        amount="0.12", #TODO: UPDATE WITH OUR FX RATE
+        amount="0.12",
         currency=data.currency
     )
     
-    print("Calculated network fee:", network_fee)
-    
-    print("Creating payment record in database...")
+    logger_payments.info(f"[create_payment] Creating payment record: {payment_id}")
     payment = models.Payment(
         id=payment_id,
         user_id=user_id,
@@ -1241,9 +1219,8 @@ async def create_payment(
     db.commit()
     db.refresh(payment)
     
-    print("Payment record created:", payment)
+    logger_payments.info(f"[create_payment] Payment record created and saved")
     
-    # Send email notification to client about payment creation
     try:
         send_email(
             template="payment_created.html",
@@ -1262,15 +1239,16 @@ async def create_payment(
                 "payment_id": payment_id,
             }
         )
-        
+        logger_payments.info(f"[create_payment] User notification email sent to {user.email}")
     except Exception as e:
-        print(f"Failed to send payment creation email: {e}")
+        logger_payments.error(f"[create_payment] Failed to send payment creation email: {e}")
+        send_slack_message("rates", f"⚠️ Payment {payment_id}: Failed to send email to {user.email}")
         
     try:
         send_email(
         template="transaction_approval_required.html",
         subject=f"[DEMO] Approval required: Transaction {payment_id}",
-        to=["dev@vaulta.digital"],  # list[str]
+        to=["dev@vaulta.digital"],
         context={
             "payment_id": payment_id,
             "initiator_name": user.first_name,
@@ -1288,10 +1266,10 @@ async def create_payment(
         },
         from_email="payments@noreply.vaulta.digital"
         )
-    
+        logger_payments.info(f"[create_payment] Admin approval email sent for {payment_id}")
     except Exception as e:
-        print(f"Failed to send admin approval email: {e}")
-        
+        logger_payments.error(f"[create_payment] Failed to send admin approval email: {e}")
+        send_slack_message("rates", f"⚠️ Payment {payment_id}: Failed to send admin approval email")
     
     response = PaymentResponse(
         id=payment.id,
@@ -1303,7 +1281,7 @@ async def create_payment(
         created_at=payment.created_at.isoformat() + "Z"
     )
     
-    print("Returning payment response:", response)
+    logger_payments.info(f"[create_payment] Payment creation complete: {payment_id}")
     return response
 
 @app.get("/api/v1/payments/{payment_id}", response_model=PaymentResponse)
