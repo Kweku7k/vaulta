@@ -676,16 +676,11 @@ async def complete_onboarding(
     Email: {email}
     Persona Inquiry Id: {inquiry_id}
     Phone: {phone}
+    Persona Status: {kyc.persona_status},
+    Persona Inquiry_id: {kyc.persona_inquiry_id},
     {doc_links}"""
 
     send_slack_message("rates", message)
-
-    # send_slack_message("rates", {
-    #     "message": f"New onboarding complete: {email}",
-    #     "persona_inquiry_id": inquiry_id,
-    #     "documents_uploaded": len(urls),
-    #     "document_urls": urls
-    # })
 
     logger.info(f"[onboarding/complete] Onboarding complete for {email}, user_id={user_id}, docs={len(urls)}")
     return {

@@ -677,6 +677,69 @@
 
     .rail-button:hover { background: var(--gray-50); border-color: var(--gray-300); }
 
+    /* ── Success Modal ─────────────────────────────────────────── */
+    .modal-overlay {
+      display: none;
+      position: fixed;
+      inset: 0;
+      background: rgba(0,0,0,.4);
+      z-index: 10000;
+      align-items: center;
+      justify-content: center;
+      animation: fadeIn 300ms var(--ease);
+    }
+
+    .modal-overlay.show { display: flex; }
+
+    .modal {
+      background: #fff;
+      border-radius: var(--radius-lg);
+      padding: 40px;
+      max-width: 420px;
+      width: 90%;
+      text-align: center;
+      box-shadow: var(--shadow-lg);
+      animation: slideUp 300ms var(--ease);
+    }
+
+    .modal-icon {
+      width: 56px;
+      height: 56px;
+      border-radius: 999px;
+      background: var(--green-bg);
+      color: var(--green);
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      margin: 0 auto 20px;
+    }
+
+    .modal-icon svg { width: 28px; height: 28px; }
+
+    .modal-title {
+      font-size: 22px;
+      font-weight: 600;
+      color: var(--gray-900);
+      margin: 0 0 12px;
+    }
+
+    .modal-message {
+      font-size: 14px;
+      color: var(--gray-500);
+      line-height: 1.6;
+      margin: 0 0 20px;
+    }
+
+    .modal-countdown {
+      font-size: 28px;
+      font-weight: 600;
+      color: var(--accent);
+      margin: 0;
+    }
+
+    @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+    @keyframes slideUp { from { opacity: 0; transform: translateY(20px); } to { opacity: 1; transform: translateY(0); } }
+
     /* ── Text inputs ────────────────────────────────────────── */
     .text-input {
       width: 100%;
@@ -1325,8 +1388,21 @@
         var resp = await fetch(window.__ONBOARDING_API_BASE + '/api/v1/onboarding/complete', { method: 'POST', body: formData });
         var result = await resp.json();
         if (resp.ok) {
-          submitBtn.querySelector('.btn-label').textContent = 'Submitted';
-          showToast(result.message || 'Onboarding complete!', 'success');
+          var overlay = document.getElementById('success-modal-overlay');
+          var countdown = document.getElementById('countdown-timer');
+          overlay.classList.add('show');
+          
+          var count = 3;
+          countdown.textContent = count;
+          var interval = setInterval(function() {
+            count--;
+            if (count >= 0) {
+              countdown.textContent = count;
+            } else {
+              clearInterval(interval);
+              window.location.href = 'https://vaulta.digital';
+            }
+          }, 1000);
         } else {
           submitBtn.classList.remove('loading');
           submitBtn.disabled = false;
@@ -1416,5 +1492,15 @@
     });
   })();
   </script>
+
+  <div id="success-modal-overlay" class="modal-overlay">
+    <div class="modal">
+      <div class="modal-icon">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 6L9 17l-5-5"/></svg>
+      </div>
+      <h2 class="modal-title">Success!</h2>
+      <p class="modal-message">Your documents have been received and you will be redirected to Vaulta in <span id="countdown-timer" class="modal-countdown">3</span> seconds</p>
+    </div>
+  </div>
 </body>
 </html>
