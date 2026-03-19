@@ -42,6 +42,11 @@ from core.config import settings
 
 app = FastAPI()
 
+import logging
+
+logger = logging.getLogger("vaulta.onboarding")
+logging.basicConfig(level=logging.INFO, format="%(asctime)s %(name)s %(levelname)s %(message)s")
+
 # Add the middleware near the top of your stack
 # app.add_middleware(
 #     IdempotencyMiddleware,
@@ -474,29 +479,39 @@ async def register(user_data: UserCreate, db: Session = Depends(get_db)):
 @app.get("/onboarding", include_in_schema=False)
 async def onboarding_page():
     return FileResponse("templates/onboarding.html", media_type="text/html")
-
 @app.get("/api/v1/onboarding/start")
 async def start_onboarding(db: Session = Depends(get_db)):
     """Generate a reference_id for a new Persona inquiry. No auth required."""
-    reference_id = f"kyc_{uuid.uuid4().hex[:12]}"
+    logger.info("[onboarding/start] Request received")
+    try:
+        reference_id = f"kyc_{uuid.uuid4().hex[:12]}"
+        logger.info(f"[onboarding/start] Generated reference_id={reference_id}")
 
-    kyc = models.UserKyc(reference_id=reference_id, persona_status="pending")
-    db.add(kyc)
-    db.commit()
-    db.refresh(kyc)
+        kyc = models.UserKyc(reference_id=reference_id, persona_status="pending")
+        db.add(kyc)
+        db.commit()
+        db.refresh(kyc)
+        logger.info(f"[onboarding/start] KYC record created, id={kyc.id}")
 
-    return {
-        "reference_id": reference_id,
-        "persona_template_id": settings.PERSONA_TEMPLATE_ID,
-        "persona_environment": settings.PERSONA_ENVIRONMENT,
-    }
+        response = {
+            "reference_id": reference_id,
+            "persona_template_id": settings.PERSONA_TEMPLATE_ID,
+            "persona_environment": settings.PERSONA_ENVIRONMENT,
+        }
+        logger.info(f"[onboarding/start] Returning: {response}")
+        return response
+    except Exception as e:
+        logger.exception(f"[onboarding/start] Error: {e}")
+        raise
 
 
 @app.get("/api/v1/onboarding/status/{reference_id}")
 async def get_onboarding_status(reference_id: str, db: Session = Depends(get_db)):
     """Check onboarding state by reference_id. No auth required."""
+    logger.info(f"[onboarding/status] Request for reference_id={reference_id}")
     kyc = db.query(models.UserKyc).filter(models.UserKyc.reference_id == reference_id).first()
     if not kyc:
+        logger.warning(f"[onboarding/status] Not found: reference_id={reference_id}")
         raise HTTPException(status_code=404, detail="Onboarding session not found")
 
     doc_fields = [
@@ -505,6 +520,7 @@ async def get_onboarding_status(reference_id: str, db: Session = Depends(get_db)
         "company_address_proof", "regulatory_information", "source_of_funds",
     ]
     documents = {f: getattr(kyc, f) for f in doc_fields if getattr(kyc, f)}
+    logger.info(f"[onboarding/status] Found: status={kyc.persona_status}, docs={len(documents)}, user_id={kyc.user_id}")
 
     return {
         "reference_id": kyc.reference_id,
@@ -536,7 +552,10 @@ async def complete_onboarding(
     Single submission for new users: Persona inquiry_id + contact info + documents.
     No auth required — this creates the user account.
     """
+    logger.info(f"[onboarding/complete] Request received: inquiry_id={inquiry_id}, email={email}, phone={phone}")
+
     # 1. Verify the Persona inquiry server-side
+    logger.info(f"[onboarding/complete] Verifying Persona inquiry {inquiry_id}")
     async with httpx.AsyncClient() as client:
         resp = await client.get(
             f"https://withpersona.com/api/v1/inquiries/{inquiry_id}",
@@ -548,24 +567,28 @@ async def complete_onboarding(
         )
 
     if resp.status_code != 200:
-        print(f"Persona API error: {resp.status_code} {resp.text}")
+        logger.error(f"[onboarding/complete] Persona API error: status={resp.status_code}, body={resp.text}")
         send_slack_message("rates", f"Persona API error: {resp.status_code} {resp.text} \n{email} \n{phone} \n{inquiry_id}")
         raise HTTPException(status_code=502, detail="Failed to verify inquiry with Persona")
 
     inquiry = resp.json().get("data", {})
     attrs = inquiry.get("attributes", {})
     reference_id = attrs.get("referenceId")
+    logger.info(f"[onboarding/complete] Persona response: referenceId={reference_id}, status={attrs.get('status')}")
 
     # 2. Find the KYC record by reference_id
     kyc = db.query(models.UserKyc).filter(models.UserKyc.reference_id == reference_id).first()
     if not kyc:
+        logger.error(f"[onboarding/complete] No KYC record for reference_id={reference_id}")
         raise HTTPException(status_code=400, detail="No onboarding session found for this inquiry")
 
     if kyc.user_id:
+        logger.warning(f"[onboarding/complete] Already completed: reference_id={reference_id}, user_id={kyc.user_id}")
         raise HTTPException(status_code=409, detail="Onboarding already completed for this session")
 
     persona_status = attrs.get("status", "unknown")
     if persona_status != "completed":
+        logger.warning(f"[onboarding/complete] Inquiry not completed: status={persona_status}")
         raise HTTPException(
             status_code=400,
             detail=f"Inquiry status is '{persona_status}', expected 'completed'",
@@ -574,14 +597,17 @@ async def complete_onboarding(
     # 3. Extract verified name from Persona
     first_name = attrs.get("nameFirst", "")
     last_name = attrs.get("nameLast", "")
+    logger.info(f"[onboarding/complete] Persona verified name: {first_name} {last_name}")
 
     # 4. Check if email is already registered
     existing = db.query(models.User).filter(models.User.email == email).first()
     if existing:
+        logger.warning(f"[onboarding/complete] Email already registered: {email}")
         raise HTTPException(status_code=400, detail="Email already registered")
 
     # 5. Create the user account
     user_id = secrets.token_hex(8)
+    logger.info(f"[onboarding/complete] Creating user: user_id={user_id}, email={email}")
     new_user = models.User(
         id=user_id,
         first_name=first_name or email.split("@")[0],
@@ -604,12 +630,16 @@ async def complete_onboarding(
         "source_of_funds": source_of_funds,
     }
     provided = {k: v for k, v in files.items() if v is not None and v.filename}
+    logger.info(f"[onboarding/complete] Documents provided: {list(provided.keys())}")
 
     urls: dict[str, str] = {}
     if provided:
         try:
+            logger.info(f"[onboarding/complete] Uploading {len(provided)} documents to Firebase")
             urls = await upload_documents(provided, folder=f"onboarding/{user_id}")
+            logger.info(f"[onboarding/complete] Upload complete: {list(urls.keys())}")
         except ValueError as e:
+            logger.error(f"[onboarding/complete] Document upload error: {e}")
             raise HTTPException(status_code=400, detail=str(e))
 
     # 7. Link KYC record to the new user
@@ -625,6 +655,7 @@ async def complete_onboarding(
     db.commit()
     db.refresh(kyc)
     db.refresh(new_user)
+    logger.info(f"[onboarding/complete] KYC record linked to user_id={user_id}")
 
     try:
         send_email(
@@ -632,8 +663,9 @@ async def complete_onboarding(
             to=[email],
             context={"name": new_user.first_name, "to": [email], "subject": "Welcome To Vaulta"},
         )
+        logger.info(f"[onboarding/complete] Welcome email sent to {email}")
     except Exception as e:
-        print(f"Error sending welcome email: {e}")
+        logger.error(f"[onboarding/complete] Error sending welcome email: {e}")
 
     send_slack_message("rates", {
         "message": f"New onboarding complete: {email}",
@@ -641,6 +673,7 @@ async def complete_onboarding(
         "documents_uploaded": len(urls),
     })
 
+    logger.info(f"[onboarding/complete] Onboarding complete for {email}, user_id={user_id}, docs={len(urls)}")
     return {
         "message": "Onboarding complete — account created",
         "user_id": user_id,
@@ -652,7 +685,6 @@ async def complete_onboarding(
         "documents_uploaded": len(urls),
         "document_urls": urls,
     }
-
 
 @app.get("/")
 async def root():
