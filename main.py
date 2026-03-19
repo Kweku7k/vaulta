@@ -844,11 +844,22 @@ async def complete_onboarding(
     # Format a nice Slack message with document links
         
     doc_links = "\n".join([f"• <{url}|{name.replace('_', ' ').title()}>" for name, url in urls.items()])
+    persona_inquiry_url = (
+        f"https://app.withpersona.com/dashboard/inquiries/{kyc.persona_inquiry_id}"
+        if kyc.persona_inquiry_id
+        else None
+    )
 
     ubo_lines = "\\n".join([
         f"- {u.full_name} ({u.persona_status}, ownership: {(f'{u.ownership_percentage:g}%' if u.ownership_percentage is not None else 'N/A')})"
         for u in ubos
     ])
+
+    persona_link_line = (
+        f"    Persona Inquiry Link: <{persona_inquiry_url}|Open Inquiry>\n"
+        if persona_inquiry_url
+        else ""
+    )
 
     message = f"""*New Onboarding*
     Email: {email}
@@ -856,7 +867,7 @@ async def complete_onboarding(
     Phone: {phone}
     Persona Status: {kyc.persona_status},
     Persona Inquiry_id: {kyc.persona_inquiry_id},
-    UBO Count: {len(ubos)},
+{persona_link_line}    UBO Count: {len(ubos)},
     Verified UBOs: {len([u for u in ubos if u.persona_status in ALLOWED_PERSONA_STATUSES])},
     UBO List:\n{ubo_lines}
     {doc_links}"""
