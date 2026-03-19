@@ -7,6 +7,10 @@ from firebase_admin import credentials, storage
 from fastapi import UploadFile
 
 from core.config import settings
+import logging
+
+logger = logging.getLogger(__name__)
+
 
 ALLOWED_EXTENSIONS = {
     ".pdf", ".doc", ".docx", ".png", ".jpg", ".jpeg",
@@ -82,13 +86,20 @@ async def upload_documents(files: dict[str, UploadFile | None], folder: str = "o
     -------
     dict mapping field name -> public URL for every file that was uploaded.
     """
-
-    print(files)
+    logger.info(f"Starting upload_documents with folder='{folder}', file count={len(files)}")
     
     urls: dict[str, str] = {}
     for field_name, file in files.items():
         if file is None or not file.filename:
+            logger.debug(f"Skipping field '{field_name}': file is None or has no filename")
             continue
-        url = await upload_file_to_firebase(file, folder=folder)
-        urls[field_name] = url
+        try:
+            url = await upload_file_to_firebase(file, folder=folder)
+            urls[field_name] = url
+            logger.info(f"Successfully uploaded '{field_name}' ({file.filename})")
+        except Exception as e:
+            logger.error(f"Failed to upload '{field_name}': {e}")
+            raise
+    
+    logger.info(f"Upload complete: {len(urls)} files uploaded")
     return urls
