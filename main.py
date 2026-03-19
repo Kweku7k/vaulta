@@ -587,11 +587,12 @@ async def complete_onboarding(
         raise HTTPException(status_code=409, detail="Onboarding already completed for this session")
 
     persona_status = attrs.get("status", "unknown")
-    if persona_status != "completed":
-        logger.warning(f"[onboarding/complete] Inquiry not completed: status={persona_status}")
+    allowed_persona_statuses = {"completed", "approved"}
+    if persona_status not in allowed_persona_statuses:
+        logger.warning(f"[onboarding/complete] Inquiry not eligible to continue: status={persona_status}")
         raise HTTPException(
             status_code=400,
-            detail=f"Inquiry status is '{persona_status}', expected 'completed'",
+            detail=f"Inquiry status is '{persona_status}', expected one of {sorted(allowed_persona_statuses)}",
         )
 
     # 3. Extract verified name from Persona
@@ -600,10 +601,10 @@ async def complete_onboarding(
     logger.info(f"[onboarding/complete] Persona verified name: {first_name} {last_name}")
 
     # 4. Check if email is already registered
-    existing = db.query(models.User).filter(models.User.email == email).first()
-    if existing:
-        logger.warning(f"[onboarding/complete] Email already registered: {email}")
-        raise HTTPException(status_code=400, detail="Email already registered")
+    # existing = db.query(models.User).filter(models.User.email == email).first()
+    # if existing:
+    #     logger.warning(f"[onboarding/complete] Email already registered: {email}")
+    #     raise HTTPException(status_code=400, detail="Email already registered")
 
     # 5. Create the user account
     user_id = secrets.token_hex(8)
@@ -647,7 +648,7 @@ async def complete_onboarding(
     kyc.email = email
     kyc.phone = phone
     kyc.persona_inquiry_id = inquiry_id
-    kyc.persona_status = "completed"
+    kyc.persona_status = persona_status
     kyc.verified_at = datetime.now()
     for field, url in urls.items():
         setattr(kyc, field, url)
