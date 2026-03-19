@@ -759,6 +759,163 @@
     }
     .text-input::placeholder { color: var(--gray-400); }
 
+    /* ── Phone field with country code ─────────────────────── */
+    .phone-input-wrap {
+      display: flex;
+      gap: 0;
+      border: 1px solid var(--gray-200);
+      border-radius: var(--radius-sm);
+      overflow: hidden;
+      transition: border-color var(--duration) var(--ease), box-shadow var(--duration) var(--ease);
+    }
+
+    .phone-input-wrap:focus-within {
+      border-color: var(--accent);
+      box-shadow: 0 0 0 3px rgba(202,138,4,.1);
+    }
+
+    .country-code-select {
+      appearance: none;
+      border: none;
+      outline: none;
+      background: var(--gray-50);
+      border-right: 1px solid var(--gray-200);
+      padding: 10px 8px 10px 12px;
+      font-size: 14px;
+      font-family: inherit;
+      color: var(--gray-900);
+      cursor: pointer;
+      flex-shrink: 0;
+      min-width: 90px;
+      max-width: 120px;
+    }
+
+    .country-code-select:focus { outline: none; }
+
+    .phone-input-wrap .text-input {
+      border: none;
+      border-radius: 0;
+      box-shadow: none;
+      flex: 1;
+    }
+
+    .phone-input-wrap .text-input:focus {
+      border: none;
+      box-shadow: none;
+    }
+
+    /* ── UBO Verification ─────────────────────────────────── */
+    .ubo-section-tools {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      margin-bottom: 10px;
+      flex-wrap: wrap;
+    }
+
+    .ubo-helper {
+      font-size: 12px;
+      color: var(--gray-500);
+      margin: 0;
+    }
+
+    .ubo-list {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+
+    .ubo-card {
+      border: 1px solid var(--gray-200);
+      border-radius: var(--radius-md);
+      background: #fff;
+      padding: 12px;
+    }
+
+    .ubo-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 10px;
+    }
+
+    .ubo-grid .field {
+      margin-bottom: 0;
+    }
+
+    .ubo-grid .field--full {
+      grid-column: 1 / -1;
+    }
+
+    .ubo-actions {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      margin-top: 10px;
+      flex-wrap: wrap;
+    }
+
+    .ubo-status {
+      font-size: 12px;
+      padding: 4px 8px;
+      border-radius: 999px;
+      font-weight: 500;
+      background: var(--gray-100);
+      color: var(--gray-600);
+    }
+
+    .ubo-status--verified {
+      background: var(--green-bg);
+      color: #166534;
+      border: 1px solid var(--green-border);
+    }
+
+    .ubo-status--pending {
+      background: var(--accent-bg);
+      color: var(--accent);
+    }
+
+    .ubo-remove-btn {
+      appearance: none;
+      border: 1px solid var(--gray-200);
+      background: #fff;
+      color: var(--gray-600);
+      border-radius: 6px;
+      font-size: 12px;
+      padding: 6px 10px;
+      cursor: pointer;
+    }
+
+    .ubo-remove-btn:hover {
+      background: var(--red-bg);
+      color: var(--red);
+      border-color: var(--red-border);
+    }
+
+    .ubo-verify-btn {
+      appearance: none;
+      border: none;
+      border-radius: 6px;
+      background: var(--gray-900);
+      color: #fff;
+      font-size: 12px;
+      padding: 7px 12px;
+      cursor: pointer;
+      font-weight: 500;
+    }
+
+    .ubo-verify-btn:disabled {
+      opacity: .6;
+      cursor: not-allowed;
+    }
+
+    @media (max-width: 680px) {
+      .ubo-grid {
+        grid-template-columns: 1fr;
+      }
+    }
+
     /* ── Toast ─────────────────────────────────────────────── */
     .toast-container {
       position: fixed;
@@ -862,7 +1019,41 @@
             </div>
             <div class="field" style="margin-bottom: 24px;">
               <label for="phone">Phone number<span class="required">*</span></label>
-              <input type="tel" id="phone" name="phone" required placeholder="+1 (555) 000-0000" class="text-input">
+              <div class="phone-input-wrap">
+                <select id="country-code" class="country-code-select" aria-label="Country code">
+                  <option value="+1">🇺🇸 +1</option>
+                  <option value="+44">🇬🇧 +44</option>
+                  <option value="+233" selected>🇬🇭 +233</option>
+                  <option value="+234">🇳🇬 +234</option>
+                  <option value="+254">🇰🇪 +254</option>
+                  <option value="+27">🇿🇦 +27</option>
+                  <option value="+255">🇹🇿 +255</option>
+                  <option value="+256">🇺🇬 +256</option>
+                  <option value="+251">🇪🇹 +251</option>
+                  <option value="+212">🇲🇦 +212</option>
+                  <option value="+20">🇪🇬 +20</option>
+                  <option value="+49">🇩🇪 +49</option>
+                  <option value="+33">🇫🇷 +33</option>
+                  <option value="+971">🇦🇪 +971</option>
+                  <option value="+65">🇸🇬 +65</option>
+                  <option value="+91">🇮🇳 +91</option>
+                  <option value="+86">🇨🇳 +86</option>
+                  <option value="+81">🇯🇵 +81</option>
+                  <option value="+55">🇧🇷 +55</option>
+                  <option value="+61">🇦🇺 +61</option>
+                  <option value="+64">🇳🇿 +64</option>
+                  <option value="+7">🇷🇺 +7</option>
+                  <option value="+82">🇰🇷 +82</option>
+                  <option value="+31">🇳🇱 +31</option>
+                  <option value="+34">🇪🇸 +34</option>
+                  <option value="+39">🇮🇹 +39</option>
+                  <option value="+351">🇵🇹 +351</option>
+                  <option value="+46">🇸🇪 +46</option>
+                  <option value="+41">🇨🇭 +41</option>
+                </select>
+                <input type="tel" id="phone" name="phone" required placeholder="000 000 0000" class="text-input">
+              </div>
+              <input type="hidden" id="phone-full" name="phone-full">
             </div>
 
             <div class="sections">
@@ -873,7 +1064,7 @@
                   <div class="accordion-header-left">
                     <span class="section-check"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M20 6L9 17l-5-5"/></svg></span>
                     <div class="accordion-header-text">
-                      <div class="accordion-title">Company registration</div>
+                      <div class="accordion-title">Company Registration</div>
                       <div class="accordion-subtitle">Certificate of incorporation &amp; articles of association</div>
                     </div>
                   </div>
@@ -922,7 +1113,7 @@
               </div>
 
               <!-- Section 2 -->
-              <div class="accordion-item" data-accordion data-section="1">
+              <div class="accordion-item" data-accordion data-section="1" data-section-type="ubos">
                 <button class="accordion-header" type="button">
                   <div class="accordion-header-left">
                     <span class="section-check"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M20 6L9 17l-5-5"/></svg></span>
@@ -934,26 +1125,12 @@
                   <svg class="accordion-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 9l6 6 6-6"/></svg>
                 </button>
                 <div class="accordion-body">
-                  <p class="section-subcopy">Provide details of all individuals holding more than 10% of the business.</p>
-                  <div class="field">
-                    <label for="ubos_schedule">UBO schedule / register<span class="required">*</span></label>
-                    <div class="dropzone" data-required="true">
-                      <input type="file" id="ubos_schedule" name="ubos_schedule" required accept=".pdf,.doc,.docx,.xlsx,.csv">
-                      <div class="dropzone-prompt">
-                        <svg class="dropzone-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M12 16V6m0 0l-3 3m3-3l3 3"/><path d="M20 16.7A4.5 4.5 0 0017.5 8a7 7 0 00-13.16 1.03A4.5 4.5 0 006.5 18h11a4.5 4.5 0 001.5-1.3z"/></svg>
-                        <p class="dropzone-text"><span class="dropzone-link">Click to upload</span> or drag and drop</p>
-                        <p class="dropzone-formats">PDF, DOCX, XLSX, CSV</p>
-                      </div>
-                      <div class="dropzone-preview">
-                        <div class="file-chip">
-                          <span class="file-chip-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8l-6-6z"/><path d="M14 2v6h6"/></svg></span>
-                          <div class="file-chip-info"><span class="file-chip-name"></span><span class="file-chip-size"></span></div>
-                          <button type="button" class="file-chip-remove" aria-label="Remove file"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6L6 18M6 6l12 12"/></svg></button>
-                        </div>
-                      </div>
-                    </div>
-                    <p class="hint">Include full names, ownership percentages, and identification numbers.</p>
+                  <p class="section-subcopy">Add each UBO with name, email, phone, and ownership percentage, then complete Persona verification. You can add as many UBOs as needed.</p>
+                  <div class="ubo-section-tools">
+                    <p id="ubo-helper" class="ubo-helper">No UBO added yet.</p>
+                    <button type="button" id="add-ubo-btn" class="persona-btn">+ Add UBO</button>
                   </div>
+                  <div id="ubo-list" class="ubo-list"></div>
                 </div>
               </div>
 
@@ -963,7 +1140,7 @@
                   <div class="accordion-header-left">
                     <span class="section-check"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M20 6L9 17l-5-5"/></svg></span>
                     <div class="accordion-header-text">
-                      <div class="accordion-title">Certified company profile</div>
+                      <div class="accordion-title">Certified Company Profile</div>
                       <div class="accordion-subtitle">Management team and organisational structure</div>
                     </div>
                   </div>
@@ -998,7 +1175,7 @@
                   <div class="accordion-header-left">
                     <span class="section-check"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M20 6L9 17l-5-5"/></svg></span>
                     <div class="accordion-header-text">
-                      <div class="accordion-title">Identification documents</div>
+                      <div class="accordion-title">Identification Documents</div>
                       <div class="accordion-subtitle">Passports and proof of residential address</div>
                     </div>
                   </div>
@@ -1034,7 +1211,7 @@
                   <div class="accordion-header-left">
                     <span class="section-check"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M20 6L9 17l-5-5"/></svg></span>
                     <div class="accordion-header-text">
-                      <div class="accordion-title">Company proof of address</div>
+                      <div class="accordion-title">Company Proof Of Address</div>
                       <div class="accordion-subtitle">Recent utility bill or similar document</div>
                     </div>
                   </div>
@@ -1042,7 +1219,7 @@
                 </button>
                 <div class="accordion-body">
                   <div class="field">
-                    <label for="company_address_proof">Company proof of address<span class="required">*</span></label>
+                    <label for="company_address_proof">Company Proof Of Address<span class="required">*</span></label>
                     <div class="dropzone" data-required="true">
                       <input type="file" id="company_address_proof" name="company_address_proof" required accept=".pdf,.jpg,.jpeg,.png">
                       <div class="dropzone-prompt">
@@ -1105,7 +1282,7 @@
                   <div class="accordion-header-left">
                     <span class="section-check"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M20 6L9 17l-5-5"/></svg></span>
                     <div class="accordion-header-text">
-                      <div class="accordion-title">Source of funds</div>
+                      <div class="accordion-title">Source Of Funds</div>
                       <div class="accordion-subtitle">Bank statements or statement of good standing</div>
                     </div>
                   </div>
@@ -1182,14 +1359,14 @@
           <p class="rail-progress-text"><span id="rail-count">0</span> of <span id="rail-total">8</span> complete</p>
           <div class="rail-bar-track"><div class="rail-bar-fill" id="rail-bar"></div></div>
           <ul class="rail-checklist" id="rail-checklist">
-            <li class="active" data-rail="0"><span class="rail-check"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M20 6L9 17l-5-5"/></svg></span>Company registration</li>
-            <li data-rail="1"><span class="rail-check"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M20 6L9 17l-5-5"/></svg></span>Beneficial owners</li>
-            <li data-rail="2"><span class="rail-check"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M20 6L9 17l-5-5"/></svg></span>Company profile</li>
-            <li data-rail="3"><span class="rail-check"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M20 6L9 17l-5-5"/></svg></span>ID documents</li>
-            <li data-rail="4"><span class="rail-check"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M20 6L9 17l-5-5"/></svg></span>Proof of address</li>
-            <li data-rail="5"><span class="rail-check"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M20 6L9 17l-5-5"/></svg></span>Regulatory info</li>
-            <li data-rail="6"><span class="rail-check"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M20 6L9 17l-5-5"/></svg></span>Source of funds</li>
-            <li data-rail="7"><span class="rail-check"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M20 6L9 17l-5-5"/></svg></span>Identity verification</li>
+            <li class="active" data-rail="0"><span class="rail-check"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M20 6L9 17l-5-5"/></svg></span>Company Registration</li>
+            <li data-rail="1"><span class="rail-check"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M20 6L9 17l-5-5"/></svg></span>Beneficial Owners</li>
+            <li data-rail="2"><span class="rail-check"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M20 6L9 17l-5-5"/></svg></span>Company Profile</li>
+            <li data-rail="3"><span class="rail-check"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M20 6L9 17l-5-5"/></svg></span>ID Documents</li>
+            <li data-rail="4"><span class="rail-check"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M20 6L9 17l-5-5"/></svg></span>Proof Of Address</li>
+            <li data-rail="5"><span class="rail-check"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M20 6L9 17l-5-5"/></svg></span>Regulatory Info</li>
+            <li data-rail="6"><span class="rail-check"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M20 6L9 17l-5-5"/></svg></span>Source Of Funds</li>
+            <li data-rail="7"><span class="rail-check"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M20 6L9 17l-5-5"/></svg></span>Identity Verification</li>
           </ul>
           <div class="rail-divider"></div>
           <div class="rail-help-title">Need help?</div>
@@ -1233,18 +1410,25 @@
     var accItems = Array.from(document.querySelectorAll('.accordion-item[data-section]'));
     var sectionDone = {};
     var personaDone = false;
+    var ubosDone = false;
 
     function updateProgress() {
       // Check each section for filled dropzones
       accItems.forEach(function (item) {
         var idx = parseInt(item.dataset.section, 10);
-        var requiredZones = item.querySelectorAll('.dropzone[data-required]');
         var allFilled = true;
-        if (requiredZones.length) {
-          requiredZones.forEach(function (dz) { if (!dz.classList.contains('has-file')) allFilled = false; });
+
+        if (item.dataset.sectionType === 'ubos') {
+          allFilled = ubosDone;
         } else {
-          allFilled = !!item.querySelector('.dropzone.has-file');
+          var requiredZones = item.querySelectorAll('.dropzone[data-required]');
+          if (requiredZones.length) {
+            requiredZones.forEach(function (dz) { if (!dz.classList.contains('has-file')) allFilled = false; });
+          } else {
+            allFilled = !!item.querySelector('.dropzone.has-file');
+          }
         }
+
         sectionDone[idx] = allFilled;
         item.classList.toggle('done', allFilled);
       });
@@ -1262,6 +1446,7 @@
       });
     }
     window.__setPersonaDone = function () { personaDone = true; updateProgress(); };
+    window.__setUbosDone = function (value) { ubosDone = !!value; updateProgress(); };
 
     // ── Accordion ───────────────────────────────────────────
     function openSection(item) {
@@ -1296,6 +1481,160 @@
         }
       });
     });
+
+    // ── UBO multi-verification flow ─────────────────────────
+    var uboList = document.getElementById('ubo-list');
+    var uboHelper = document.getElementById('ubo-helper');
+    var addUboBtn = document.getElementById('add-ubo-btn');
+
+    function createUboPhoneInput() {
+      return (
+        '<div class="phone-input-wrap">' +
+          '<select class="country-code-select ubo-country-code" aria-label="UBO country code">' +
+            '<option value="+233" selected>+233</option>' +
+            '<option value="+1">+1</option>' +
+            '<option value="+44">+44</option>' +
+            '<option value="+234">+234</option>' +
+            '<option value="+27">+27</option>' +
+            '<option value="+254">+254</option>' +
+          '</select>' +
+          '<input type="tel" class="text-input ubo-phone" placeholder="000 000 0000" required>' +
+        '</div>'
+      );
+    }
+
+    function refreshUboCompletionState() {
+      var cards = Array.from(document.querySelectorAll('.ubo-card'));
+      var verified = cards.filter(function (card) { return card.dataset.verified === 'true'; }).length;
+      ubosDone = cards.length > 0 && verified === cards.length;
+
+      if (!cards.length) {
+        uboHelper.textContent = 'No UBO added yet.';
+      } else {
+        uboHelper.textContent = verified + ' of ' + cards.length + ' UBO(s) verified.';
+      }
+      updateProgress();
+    }
+
+    function normalizePhone(countryCode, phone) {
+      var cleaned = (phone || '').trim().replace(/\s+/g, '');
+      if (!cleaned) return '';
+      if (cleaned.charAt(0) === '+') return cleaned;
+      return countryCode + cleaned.replace(/^0+/, '');
+    }
+
+    function addUboCard(initialData) {
+      var card = document.createElement('div');
+      card.className = 'ubo-card';
+      card.dataset.verified = 'false';
+      card.innerHTML =
+        '<div class="ubo-grid">' +
+          '<div class="field field--full">' +
+            '<label>Full name<span class="required">*</span></label>' +
+            '<input type="text" class="text-input ubo-name" placeholder="Jane Doe" required>' +
+          '</div>' +
+          '<div class="field">' +
+            '<label>Email<span class="required">*</span></label>' +
+            '<input type="email" class="text-input ubo-email" placeholder="jane@company.com" required>' +
+          '</div>' +
+          '<div class="field">' +
+            '<label>Phone<span class="required">*</span></label>' + createUboPhoneInput() +
+          '</div>' +
+          '<div class="field">' +
+            '<label>Ownership percentage (%)<span class="required">*</span></label>' +
+            '<input type="number" class="text-input ubo-ownership" placeholder="25" min="0.01" max="100" step="0.01" required>' +
+          '</div>' +
+        '</div>' +
+        '<div class="ubo-actions">' +
+          '<span class="ubo-status ubo-status--pending">Verification pending</span>' +
+          '<div>' +
+            '<button type="button" class="ubo-remove-btn">Remove</button> ' +
+            '<button type="button" class="ubo-verify-btn">Verify with Persona</button>' +
+          '</div>' +
+        '</div>';
+
+      if (initialData) {
+        card.querySelector('.ubo-name').value = initialData.full_name || '';
+        card.querySelector('.ubo-email').value = initialData.email || '';
+        card.querySelector('.ubo-ownership').value = initialData.ownership_percentage || '';
+      }
+
+      var removeBtn = card.querySelector('.ubo-remove-btn');
+      var verifyBtn = card.querySelector('.ubo-verify-btn');
+      var statusChip = card.querySelector('.ubo-status');
+
+      removeBtn.addEventListener('click', function () {
+        card.remove();
+        refreshUboCompletionState();
+      });
+
+      verifyBtn.addEventListener('click', async function () {
+        var name = card.querySelector('.ubo-name').value.trim();
+        var email = card.querySelector('.ubo-email').value.trim();
+        var phoneRaw = card.querySelector('.ubo-phone').value;
+        var countryCode = card.querySelector('.ubo-country-code').value;
+        var phone = normalizePhone(countryCode, phoneRaw);
+        var ownershipRaw = card.querySelector('.ubo-ownership').value;
+        var ownershipPercentage = parseFloat(ownershipRaw);
+
+        if (!name || !email || !phone || !ownershipRaw) {
+          showToast('Fill name, email, phone, and ownership percentage before verifying this UBO.', 'error');
+          return;
+        }
+
+        if (Number.isNaN(ownershipPercentage) || ownershipPercentage <= 0 || ownershipPercentage > 100) {
+          showToast('Ownership percentage must be a number greater than 0 and not more than 100.', 'error');
+          return;
+        }
+
+        if (typeof window.__verifyUboWithPersona !== 'function') {
+          showToast('UBO verification service not ready yet. Please wait and try again.', 'error');
+          return;
+        }
+
+        verifyBtn.disabled = true;
+        verifyBtn.textContent = 'Verifying...';
+
+        try {
+          var verified = await window.__verifyUboWithPersona({
+            full_name: name,
+            email: email,
+            phone: phone,
+            ownership_percentage: ownershipPercentage,
+          });
+
+          card.dataset.verified = 'true';
+          card.dataset.uboReferenceId = verified.ubo_reference_id || '';
+          card.dataset.personaInquiryId = verified.persona_inquiry_id || '';
+          statusChip.className = 'ubo-status ubo-status--verified';
+          statusChip.textContent = 'Verified';
+          verifyBtn.textContent = 'Verified';
+          showToast(name + ' verified successfully.', 'success');
+          refreshUboCompletionState();
+        } catch (err) {
+          card.dataset.verified = 'false';
+          statusChip.className = 'ubo-status ubo-status--pending';
+          statusChip.textContent = 'Verification pending';
+          verifyBtn.disabled = false;
+          verifyBtn.textContent = 'Verify with Persona';
+          showToast((err && err.message) ? err.message : 'UBO verification failed.', 'error');
+          refreshUboCompletionState();
+        }
+      });
+
+      uboList.appendChild(card);
+      refreshUboCompletionState();
+    }
+
+    addUboBtn.addEventListener('click', function () {
+      addUboCard();
+      var uboSection = document.querySelector('.accordion-item[data-section="1"]');
+      if (uboSection && !uboSection.classList.contains('open')) {
+        openSection(uboSection);
+      }
+    });
+
+    addUboCard();
 
     // ── Dropzone: drag & drop + preview ─────────────────────
     document.querySelectorAll('.dropzone').forEach(function (dz) {
@@ -1369,6 +1708,16 @@
     form.addEventListener('submit', async function (e) {
       e.preventDefault();
 
+      if (!ubosDone) {
+        showToast('Please add and verify all UBOs before submitting.', 'error');
+        var uboSection = document.querySelector('.accordion-item[data-section="1"]');
+        if (uboSection) {
+          openSection(uboSection);
+          uboSection.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        }
+        return;
+      }
+
       // Validate Persona verification is done
       var inquiryId = document.getElementById('persona_inquiry_id').value;
       if (!inquiryId) {
@@ -1377,13 +1726,20 @@
         return;
       }
 
+      // Combine country code + number before submit
+      var countryCode = document.getElementById('country-code').value;
+      var fullPhone = normalizePhone(countryCode, document.getElementById('phone').value);
+      document.getElementById('phone').value = fullPhone;
+
       submitBtn.classList.add('loading');
       submitBtn.disabled = true;
       try {
         var formData = new FormData(form);
         // Backend expects "inquiry_id" not "persona_inquiry_id"
         formData.set('inquiry_id', inquiryId);
+        formData.set('phone', fullPhone);
         formData.delete('persona_inquiry_id');
+        formData.delete('phone-full');
 
         var resp = await fetch(window.__ONBOARDING_API_BASE + '/api/v1/onboarding/complete', { method: 'POST', body: formData });
         var result = await resp.json();
@@ -1414,7 +1770,6 @@
         showToast('Network error. Please check your connection.', 'error');
       }
     });
-
     updateProgress();
   })();
   </script>
@@ -1445,6 +1800,9 @@
         referenceId = data.reference_id;
         personaTemplateId = data.persona_template_id;
         personaEnvironment = data.persona_environment;
+        window.__ONBOARDING_REFERENCE_ID = referenceId;
+        window.__ONBOARDING_PERSONA_TEMPLATE_ID = personaTemplateId;
+        window.__ONBOARDING_PERSONA_ENV = personaEnvironment;
         console.log('Onboarding session started:', referenceId);
       })
       .catch(function (err) {
@@ -1452,6 +1810,72 @@
         btn.disabled = true;
         btn.textContent = 'Service unavailable';
       });
+
+    window.__verifyUboWithPersona = async function (uboPayload) {
+      if (!referenceId || !personaTemplateId) {
+        throw new Error('Onboarding session is not ready yet.');
+      }
+
+      var startResp = await fetch(API_BASE + '/api/v1/onboarding/ubo/start', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          reference_id: referenceId,
+          full_name: uboPayload.full_name,
+          email: uboPayload.email,
+          phone: uboPayload.phone,
+          ownership_percentage: uboPayload.ownership_percentage,
+        }),
+      });
+
+      var startData = await startResp.json();
+      if (!startResp.ok) {
+        throw new Error(startData.detail || 'Failed to initialize UBO verification.');
+      }
+
+      return new Promise(function (resolve, reject) {
+        var uboClient = new Persona.Client({
+          templateId: startData.persona_template_id || personaTemplateId,
+          environment: startData.persona_environment || personaEnvironment,
+          referenceId: startData.ubo_reference_id,
+          onReady: function () {
+            uboClient.open();
+          },
+          onComplete: async function (d) {
+            try {
+              var verifyResp = await fetch(API_BASE + '/api/v1/onboarding/ubo/verify', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                  ubo_reference_id: startData.ubo_reference_id,
+                  inquiry_id: d.inquiryId || '',
+                }),
+              });
+
+              var verifyData = await verifyResp.json();
+              if (!verifyResp.ok) {
+                reject(new Error(verifyData.detail || 'UBO verification failed.'));
+                return;
+              }
+
+              resolve({
+                ubo_reference_id: startData.ubo_reference_id,
+                persona_inquiry_id: verifyData.persona_inquiry_id,
+                status: verifyData.status,
+              });
+            } catch (err) {
+              reject(err);
+            }
+          },
+          onFail: function () {
+            reject(new Error('UBO verification could not be completed.'));
+          },
+          onCancel: function () {
+            reject(new Error('UBO verification was cancelled.'));
+          },
+        });
+      });
+    };
 
     btn.addEventListener('click', function () {
       if (!referenceId || !personaTemplateId) {

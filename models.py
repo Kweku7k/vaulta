@@ -1,4 +1,4 @@
-from sqlalchemy import Boolean, Column, ForeignKey, Integer, String, DateTime
+from sqlalchemy import Boolean, Column, ForeignKey, Integer, String, DateTime, Float
 from sqlalchemy.sql import func
 from database import Base
     
@@ -142,6 +142,23 @@ class UserKyc(Base):
     company_address_proof = Column(String, nullable=True)
     regulatory_information = Column(String, nullable=True)
     source_of_funds = Column(String, nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), onupdate=func.now())
+
+
+class UserKycUbo(Base):
+    __tablename__ = "user_kyc_ubos"
+
+    id = Column(Integer, primary_key=True, index=True)
+    kyc_id = Column(Integer, ForeignKey("user_kyc.id"), index=True)
+    ubo_reference_id = Column(String, unique=True, index=True)
+    full_name = Column(String)
+    email = Column(String)
+    phone = Column(String)
+    ownership_percentage = Column(Float, nullable=True)
+    persona_inquiry_id = Column(String, nullable=True)
+    persona_status = Column(String, nullable=True)
+    verified_at = Column(DateTime(timezone=True), nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
 

@@ -3,7 +3,7 @@ from fastapi import FastAPI, HTTPException, Depends, Header, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, FileResponse
 from httpcore import request
-from pydantic import BaseModel, EmailStr
+from pydantic import BaseModel, EmailStr, Field
 from typing import Dict, List, Annotated, Optional
 import secrets
 import random
@@ -231,6 +231,22 @@ class ResetPasswordRequest(BaseModel):
     email: EmailStr
     otp: str
     new_password: str
+
+
+class UboStartRequest(BaseModel):
+    reference_id: str
+    full_name: str
+    email: EmailStr
+    phone: str
+    ownership_percentage: float = Field(..., gt=0, le=100)
+
+
+class UboVerifyRequest(BaseModel):
+    ubo_reference_id: str
+    inquiry_id: str
+
+
+ALLOWED_PERSONA_STATUSES = {"completed", "approved"}
     
 def get_db():
     db = SessionLocal()
@@ -238,6 +254,34 @@ def get_db():
         yield db
     finally:
         db.close()
+
+
+async def _fetch_persona_inquiry_attributes(inquiry_id: str, context_email: str = "", context_phone: str = "") -> dict:
+    logger.info(f"[persona] Verifying inquiry_id={inquiry_id}")
+    async with httpx.AsyncClient() as client:
+        resp = await client.get(
+            f"https://withpersona.com/api/v1/inquiries/{inquiry_id}",
+            headers={
+                "Authorization": f"Bearer {settings.PERSONA_API_KEY}",
+                "Persona-Version": "2023-01-05",
+                "Key-Inflection": "camel",
+            },
+        )
+
+    if resp.status_code != 200:
+        logger.error(f"[persona] API error: status={resp.status_code}, body={resp.text}")
+        send_slack_message(
+            "rates",
+            f"Persona API error: {resp.status_code} {resp.text}\\n{context_email}\\n{context_phone}\\n{inquiry_id}",
+        )
+        raise HTTPException(status_code=502, detail="Failed to verify inquiry with Persona")
+
+    inquiry = resp.json().get("data", {})
+    attrs = inquiry.get("attributes", {})
+    if not attrs:
+        logger.error(f"[persona] Empty attributes for inquiry_id={inquiry_id}")
+        raise HTTPException(status_code=400, detail="Invalid Persona inquiry response")
+    return attrs
 
 @app.post("/login", response_model=ApiResponse, status_code=status.HTTP_200_OK)
 async def login(user_data: UserLogin, db: Session = Depends(get_db)):
@@ -495,6 +539,135 @@ async def start_onboarding(db: Session = Depends(get_db)):
         raise
 
 
+@app.post("/api/v1/onboarding/ubo/start")
+async def start_ubo_onboarding(payload: UboStartRequest, db: Session = Depends(get_db)):
+    """Create or update a UBO onboarding record and return Persona config."""
+    logger.info(
+        f"[onboarding/ubo/start] reference_id={payload.reference_id}, email={payload.email}, full_name={payload.full_name}, ownership_percentage={payload.ownership_percentage}"
+    )
+
+    kyc = db.query(models.UserKyc).filter(models.UserKyc.reference_id == payload.reference_id).first()
+    if not kyc:
+        logger.warning(f"[onboarding/ubo/start] KYC not found for reference_id={payload.reference_id}")
+        raise HTTPException(status_code=404, detail="Onboarding session not found")
+
+    existing = (
+        db.query(models.UserKycUbo)
+        .filter(models.UserKycUbo.kyc_id == kyc.id, models.UserKycUbo.email == payload.email)
+        .first()
+    )
+
+    if existing:
+        existing.full_name = payload.full_name
+        existing.phone = payload.phone
+        existing.ownership_percentage = payload.ownership_percentage
+        if existing.persona_status not in ALLOWED_PERSONA_STATUSES:
+            existing.persona_status = "pending"
+            existing.persona_inquiry_id = None
+            existing.verified_at = None
+        db.commit()
+        db.refresh(existing)
+        ubo = existing
+        logger.info(f"[onboarding/ubo/start] Reusing existing UBO reference={ubo.ubo_reference_id}")
+    else:
+        ubo = models.UserKycUbo(
+            kyc_id=kyc.id,
+            ubo_reference_id=f"ubo_{uuid.uuid4().hex[:12]}",
+            full_name=payload.full_name,
+            email=str(payload.email),
+            phone=payload.phone,
+            ownership_percentage=payload.ownership_percentage,
+            persona_status="pending",
+        )
+        db.add(ubo)
+        db.commit()
+        db.refresh(ubo)
+        logger.info(f"[onboarding/ubo/start] Created new UBO reference={ubo.ubo_reference_id}")
+
+    return {
+        "message": "UBO onboarding initialized",
+        "reference_id": payload.reference_id,
+        "ubo_reference_id": ubo.ubo_reference_id,
+        "persona_template_id": settings.PERSONA_TEMPLATE_ID,
+        "persona_environment": settings.PERSONA_ENVIRONMENT,
+        "status": ubo.persona_status,
+        "ownership_percentage": ubo.ownership_percentage,
+    }
+
+
+@app.post("/api/v1/onboarding/ubo/verify")
+async def verify_ubo_onboarding(payload: UboVerifyRequest, db: Session = Depends(get_db)):
+    """Verify UBO Persona inquiry and persist result."""
+    logger.info(f"[onboarding/ubo/verify] ubo_reference_id={payload.ubo_reference_id}")
+
+    ubo = db.query(models.UserKycUbo).filter(models.UserKycUbo.ubo_reference_id == payload.ubo_reference_id).first()
+    if not ubo:
+        logger.warning(f"[onboarding/ubo/verify] UBO not found for reference={payload.ubo_reference_id}")
+        raise HTTPException(status_code=404, detail="UBO onboarding record not found")
+
+    attrs = await _fetch_persona_inquiry_attributes(payload.inquiry_id, ubo.email, ubo.phone)
+    persona_ref = attrs.get("referenceId")
+    if persona_ref != ubo.ubo_reference_id:
+        logger.warning(
+            f"[onboarding/ubo/verify] reference mismatch expected={ubo.ubo_reference_id} actual={persona_ref}"
+        )
+        raise HTTPException(status_code=400, detail="Persona inquiry does not match this UBO")
+
+    persona_status = attrs.get("status", "unknown")
+    if persona_status not in ALLOWED_PERSONA_STATUSES:
+        logger.warning(f"[onboarding/ubo/verify] status not eligible: {persona_status}")
+        raise HTTPException(
+            status_code=400,
+            detail=f"UBO inquiry status is '{persona_status}', expected one of {sorted(ALLOWED_PERSONA_STATUSES)}",
+        )
+
+    ubo.persona_inquiry_id = payload.inquiry_id
+    ubo.persona_status = persona_status
+    ubo.verified_at = datetime.now()
+    db.commit()
+    db.refresh(ubo)
+
+    return {
+        "message": "UBO verification completed",
+        "ubo_reference_id": ubo.ubo_reference_id,
+        "status": ubo.persona_status,
+        "persona_inquiry_id": ubo.persona_inquiry_id,
+        "verified_at": ubo.verified_at.isoformat() if ubo.verified_at else None,
+    }
+
+
+@app.get("/api/v1/onboarding/ubo/status/{reference_id}")
+async def get_ubo_status(reference_id: str, db: Session = Depends(get_db)):
+    """Return all UBO statuses for an onboarding session."""
+    logger.info(f"[onboarding/ubo/status] reference_id={reference_id}")
+    kyc = db.query(models.UserKyc).filter(models.UserKyc.reference_id == reference_id).first()
+    if not kyc:
+        raise HTTPException(status_code=404, detail="Onboarding session not found")
+
+    ubos = db.query(models.UserKycUbo).filter(models.UserKycUbo.kyc_id == kyc.id).all()
+    ubo_items = [
+        {
+            "ubo_reference_id": ubo.ubo_reference_id,
+            "full_name": ubo.full_name,
+            "email": ubo.email,
+            "phone": ubo.phone,
+            "ownership_percentage": ubo.ownership_percentage,
+            "status": ubo.persona_status,
+            "persona_inquiry_id": ubo.persona_inquiry_id,
+            "verified_at": ubo.verified_at.isoformat() if ubo.verified_at else None,
+        }
+        for ubo in ubos
+    ]
+    verified_count = len([u for u in ubos if u.persona_status in ALLOWED_PERSONA_STATUSES])
+
+    return {
+        "reference_id": reference_id,
+        "ubo_count": len(ubo_items),
+        "ubo_verified_count": verified_count,
+        "ubos": ubo_items,
+    }
+
+
 @app.get("/api/v1/onboarding/status/{reference_id}")
 async def get_onboarding_status(reference_id: str, db: Session = Depends(get_db)):
     """Check onboarding state by reference_id. No auth required."""
@@ -510,6 +683,8 @@ async def get_onboarding_status(reference_id: str, db: Session = Depends(get_db)
         "company_address_proof", "regulatory_information", "source_of_funds",
     ]
     documents = {f: getattr(kyc, f) for f in doc_fields if getattr(kyc, f)}
+    ubos = db.query(models.UserKycUbo).filter(models.UserKycUbo.kyc_id == kyc.id).all()
+    verified_ubos = [u for u in ubos if u.persona_status in ALLOWED_PERSONA_STATUSES]
     logger.info(f"[onboarding/status] Found: status={kyc.persona_status}, docs={len(documents)}, user_id={kyc.user_id}")
 
     return {
@@ -520,6 +695,21 @@ async def get_onboarding_status(reference_id: str, db: Session = Depends(get_db)
         "verified_at": kyc.verified_at.isoformat() if kyc.verified_at else None,
         "documents_uploaded": len(documents),
         "documents": documents,
+        "ubo_count": len(ubos),
+        "ubo_verified_count": len(verified_ubos),
+        "ubos": [
+            {
+                "ubo_reference_id": u.ubo_reference_id,
+                "full_name": u.full_name,
+                "email": u.email,
+                "phone": u.phone,
+                "ownership_percentage": u.ownership_percentage,
+                "status": u.persona_status,
+                "persona_inquiry_id": u.persona_inquiry_id,
+                "verified_at": u.verified_at.isoformat() if u.verified_at else None,
+            }
+            for u in ubos
+        ],
     }
 
 
@@ -545,24 +735,7 @@ async def complete_onboarding(
     logger.info(f"[onboarding/complete] Request received: inquiry_id={inquiry_id}, email={email}, phone={phone}")
 
     # 1. Verify the Persona inquiry server-side
-    logger.info(f"[onboarding/complete] Verifying Persona inquiry {inquiry_id}")
-    async with httpx.AsyncClient() as client:
-        resp = await client.get(
-            f"https://withpersona.com/api/v1/inquiries/{inquiry_id}",
-            headers={
-                "Authorization": f"Bearer {settings.PERSONA_API_KEY}",
-                "Persona-Version": "2023-01-05",
-                "Key-Inflection": "camel",
-            },
-        )
-
-    if resp.status_code != 200:
-        logger.error(f"[onboarding/complete] Persona API error: status={resp.status_code}, body={resp.text}")
-        send_slack_message("rates", f"Persona API error: {resp.status_code} {resp.text} \n{email} \n{phone} \n{inquiry_id}")
-        raise HTTPException(status_code=502, detail="Failed to verify inquiry with Persona")
-
-    inquiry = resp.json().get("data", {})
-    attrs = inquiry.get("attributes", {})
+    attrs = await _fetch_persona_inquiry_attributes(inquiry_id, email, phone)
     reference_id = attrs.get("referenceId")
     logger.info(f"[onboarding/complete] Persona response: referenceId={reference_id}, status={attrs.get('status')}")
 
@@ -577,13 +750,23 @@ async def complete_onboarding(
     #     logger.warning(f"[onboarding/complete] Already completed: reference_id={reference_id}, user_id={kyc.user_id}")
     #     raise HTTPException(status_code=409, detail="Onboarding already completed for this session")
 
+    ubos = db.query(models.UserKycUbo).filter(models.UserKycUbo.kyc_id == kyc.id).all()
+    if not ubos:
+        logger.warning(f"[onboarding/complete] No UBOs submitted for reference_id={reference_id}")
+        raise HTTPException(status_code=400, detail="At least one UBO must be added and verified")
+
+    unverified_ubos = [u for u in ubos if u.persona_status not in ALLOWED_PERSONA_STATUSES]
+    if unverified_ubos:
+        missing = ", ".join([u.full_name for u in unverified_ubos])
+        logger.warning(f"[onboarding/complete] Unverified UBOs: {missing}")
+        raise HTTPException(status_code=400, detail=f"These UBOs are not verified yet: {missing}")
+
     persona_status = attrs.get("status", "unknown")
-    allowed_persona_statuses = {"completed", "approved"}
-    if persona_status not in allowed_persona_statuses:
+    if persona_status not in ALLOWED_PERSONA_STATUSES:
         logger.warning(f"[onboarding/complete] Inquiry not eligible to continue: status={persona_status}")
         raise HTTPException(
             status_code=400,
-            detail=f"Inquiry status is '{persona_status}', expected one of {sorted(allowed_persona_statuses)}",
+            detail=f"Inquiry status is '{persona_status}', expected one of {sorted(ALLOWED_PERSONA_STATUSES)}",
         )
 
     # 3. Extract verified name from Persona
@@ -662,12 +845,20 @@ async def complete_onboarding(
         
     doc_links = "\n".join([f"• <{url}|{name.replace('_', ' ').title()}>" for name, url in urls.items()])
 
+    ubo_lines = "\\n".join([
+        f"- {u.full_name} ({u.persona_status}, ownership: {(f'{u.ownership_percentage:g}%' if u.ownership_percentage is not None else 'N/A')})"
+        for u in ubos
+    ])
+
     message = f"""*New Onboarding*
     Email: {email}
     Persona Inquiry Id: {inquiry_id}
     Phone: {phone}
     Persona Status: {kyc.persona_status},
     Persona Inquiry_id: {kyc.persona_inquiry_id},
+    UBO Count: {len(ubos)},
+    Verified UBOs: {len([u for u in ubos if u.persona_status in ALLOWED_PERSONA_STATUSES])},
+    UBO List:\n{ubo_lines}
     {doc_links}"""
 
     send_slack_message("rates", message)
