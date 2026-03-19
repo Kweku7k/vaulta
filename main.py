@@ -715,7 +715,8 @@ async def get_onboarding_status(reference_id: str, db: Session = Depends(get_db)
 
 @app.post("/api/v1/onboarding/complete")
 async def complete_onboarding(
-    inquiry_id: str = Form(...),
+    inquiry_id: Optional[str] = Form(None),
+    reference_id: Optional[str] = Form(None),
     email: str = Form(...),
     phone: str = Form(...),
     certificate_of_incorporation: UploadFile = File(None),
@@ -732,17 +733,46 @@ async def complete_onboarding(
     Single submission for new users: Persona inquiry_id + contact info + documents.
     No auth required — this creates the user account.
     """
-    logger.info(f"[onboarding/complete] Request received: inquiry_id={inquiry_id}, email={email}, phone={phone}")
+    logger.info(
+        f"[onboarding/complete] Request received: inquiry_id={inquiry_id}, reference_id={reference_id}, email={email}, phone={phone}"
+    )
 
-    # 1. Verify the Persona inquiry server-side
-    attrs = await _fetch_persona_inquiry_attributes(inquiry_id, email, phone)
-    reference_id = attrs.get("referenceId")
-    logger.info(f"[onboarding/complete] Persona response: referenceId={reference_id}, status={attrs.get('status')}")
+    first_name = ""
+    last_name = ""
+    persona_status = "completed"
+    resolved_reference_id = reference_id
+
+    # 1. Verify the Persona inquiry server-side when one is provided.
+    if inquiry_id:
+        attrs = await _fetch_persona_inquiry_attributes(inquiry_id, email, phone)
+        resolved_reference_id = attrs.get("referenceId")
+        logger.info(
+            f"[onboarding/complete] Persona response: referenceId={resolved_reference_id}, status={attrs.get('status')}"
+        )
+
+        persona_status = attrs.get("status", "unknown")
+        if persona_status not in ALLOWED_PERSONA_STATUSES:
+            logger.warning(f"[onboarding/complete] Inquiry not eligible to continue: status={persona_status}")
+            raise HTTPException(
+                status_code=400,
+                detail=f"Inquiry status is '{persona_status}', expected one of {sorted(ALLOWED_PERSONA_STATUSES)}",
+            )
+
+        # Extract verified name from Persona when available.
+        first_name = attrs.get("nameFirst", "")
+        last_name = attrs.get("nameLast", "")
+        logger.info(f"[onboarding/complete] Persona verified name: {first_name} {last_name}")
+    elif not resolved_reference_id:
+        raise HTTPException(status_code=400, detail="Missing onboarding reference")
+    else:
+        logger.info(
+            f"[onboarding/complete] No Persona inquiry provided; defaulting persona_status={persona_status} for reference_id={resolved_reference_id}"
+        )
 
     # 2. Find the KYC record by reference_id
-    kyc = db.query(models.UserKyc).filter(models.UserKyc.reference_id == reference_id).first()
+    kyc = db.query(models.UserKyc).filter(models.UserKyc.reference_id == resolved_reference_id).first()
     if not kyc:
-        logger.error(f"[onboarding/complete] No KYC record for reference_id={reference_id}")
+        logger.error(f"[onboarding/complete] No KYC record for reference_id={resolved_reference_id}")
         raise HTTPException(status_code=400, detail="No onboarding session found for this inquiry")
 
     # TODO: Approve on prod.
@@ -760,19 +790,6 @@ async def complete_onboarding(
         missing = ", ".join([u.full_name for u in unverified_ubos])
         logger.warning(f"[onboarding/complete] Unverified UBOs: {missing}")
         raise HTTPException(status_code=400, detail=f"These UBOs are not verified yet: {missing}")
-
-    persona_status = attrs.get("status", "unknown")
-    if persona_status not in ALLOWED_PERSONA_STATUSES:
-        logger.warning(f"[onboarding/complete] Inquiry not eligible to continue: status={persona_status}")
-        raise HTTPException(
-            status_code=400,
-            detail=f"Inquiry status is '{persona_status}', expected one of {sorted(ALLOWED_PERSONA_STATUSES)}",
-        )
-
-    # 3. Extract verified name from Persona
-    first_name = attrs.get("nameFirst", "")
-    last_name = attrs.get("nameLast", "")
-    logger.info(f"[onboarding/complete] Persona verified name: {first_name} {last_name}")
 
     # 4. Check if email is already registered
     # existing = db.query(models.User).filter(models.User.email == email).first()
@@ -863,10 +880,10 @@ async def complete_onboarding(
 
     message = f"""*New Onboarding*
     Email: {email}
-    Persona Inquiry Id: {inquiry_id}
+    Persona Inquiry Id: {inquiry_id or 'Not required'}
     Phone: {phone}
     Persona Status: {kyc.persona_status},
-    Persona Inquiry_id: {kyc.persona_inquiry_id},
+    Persona Inquiry_id: {kyc.persona_inquiry_id or 'Not required'},
 {persona_link_line}    UBO Count: {len(ubos)},
     Verified UBOs: {len([u for u in ubos if u.persona_status in ALLOWED_PERSONA_STATUSES])},
     UBO List:\n{ubo_lines}
@@ -877,7 +894,7 @@ async def complete_onboarding(
     logger.info(f"[onboarding/complete] Onboarding complete for {email}, user_id={user_id}, docs={len(urls)}")
     return {
         "message": "Documents submitted successfully — pending review",
-        "reference_id": reference_id,
+        "reference_id": resolved_reference_id,
         "email": email,
         "persona_status": kyc.persona_status,
         "persona_inquiry_id": kyc.persona_inquiry_id,

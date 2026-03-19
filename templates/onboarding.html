@@ -1718,13 +1718,7 @@
         return;
       }
 
-      // Validate Persona verification is done
       var inquiryId = document.getElementById('persona_inquiry_id').value;
-      if (!inquiryId) {
-        showToast('Please complete identity verification first.', 'error');
-        document.getElementById('persona-section').scrollIntoView({ behavior: 'smooth', block: 'center' });
-        return;
-      }
 
       // Combine country code + number before submit
       var countryCode = document.getElementById('country-code').value;
@@ -1735,8 +1729,12 @@
       submitBtn.disabled = true;
       try {
         var formData = new FormData(form);
-        // Backend expects "inquiry_id" not "persona_inquiry_id"
-        formData.set('inquiry_id', inquiryId);
+        formData.set('reference_id', window.__ONBOARDING_REFERENCE_ID || '');
+        if (inquiryId) {
+          formData.set('inquiry_id', inquiryId);
+        } else {
+          formData.delete('inquiry_id');
+        }
         formData.set('phone', fullPhone);
         formData.delete('persona_inquiry_id');
         formData.delete('phone-full');
@@ -1803,6 +1801,11 @@
         window.__ONBOARDING_REFERENCE_ID = referenceId;
         window.__ONBOARDING_PERSONA_TEMPLATE_ID = personaTemplateId;
         window.__ONBOARDING_PERSONA_ENV = personaEnvironment;
+        hidden.value = '';
+        statusEl.className = 'persona-status status-completed';
+        statusText.textContent = 'Identity verification is not required for this onboarding flow.';
+        btn.style.display = 'none';
+        if (typeof window.__setPersonaDone === 'function') window.__setPersonaDone();
         console.log('Onboarding session started:', referenceId);
       })
       .catch(function (err) {
