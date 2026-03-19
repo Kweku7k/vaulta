@@ -582,9 +582,10 @@ async def complete_onboarding(
         logger.error(f"[onboarding/complete] No KYC record for reference_id={reference_id}")
         raise HTTPException(status_code=400, detail="No onboarding session found for this inquiry")
 
-    if kyc.user_id:
-        logger.warning(f"[onboarding/complete] Already completed: reference_id={reference_id}, user_id={kyc.user_id}")
-        raise HTTPException(status_code=409, detail="Onboarding already completed for this session")
+    # TODO: Approve on prod.
+    # if kyc.user_id:
+    #     logger.warning(f"[onboarding/complete] Already completed: reference_id={reference_id}, user_id={kyc.user_id}")
+    #     raise HTTPException(status_code=409, detail="Onboarding already completed for this session")
 
     persona_status = attrs.get("status", "unknown")
     allowed_persona_statuses = {"completed", "approved"}
@@ -609,15 +610,15 @@ async def complete_onboarding(
     # 5. Create the user account
     user_id = secrets.token_hex(8)
     logger.info(f"[onboarding/complete] Creating user: user_id={user_id}, email={email}")
-    new_user = models.User(
-        id=user_id,
-        first_name=first_name or email.split("@")[0],
-        last_name=last_name or "",
-        email=email,
-        phone=phone,
-    )
-    db.add(new_user)
-    db.flush()
+    # new_user = models.User(
+    #     id=user_id,
+    #     first_name=first_name or email.split("@")[0],
+    #     last_name=last_name or "",
+    #     email=email,
+    #     phone=phone,
+    # )
+    # db.add(new_user)
+    # db.flush()
 
     # 6. Upload documents to Firebase
     files = {
@@ -644,7 +645,7 @@ async def complete_onboarding(
             raise HTTPException(status_code=400, detail=str(e))
 
     # 7. Link KYC record to the new user
-    kyc.user_id = user_id
+    # kyc.user_id = user_id
     kyc.email = email
     kyc.phone = phone
     kyc.persona_inquiry_id = inquiry_id
@@ -655,32 +656,42 @@ async def complete_onboarding(
 
     db.commit()
     db.refresh(kyc)
-    db.refresh(new_user)
+    # db.refresh(new_user)
     logger.info(f"[onboarding/complete] KYC record linked to user_id={user_id}")
 
-    try:
-        send_email(
-            "welcome.html", "Welcome To Vaulta",
-            to=[email],
-            context={"name": new_user.first_name, "to": [email], "subject": "Welcome To Vaulta"},
-        )
-        logger.info(f"[onboarding/complete] Welcome email sent to {email}")
-    except Exception as e:
-        logger.error(f"[onboarding/complete] Error sending welcome email: {e}")
+    # try:
+    #     send_email(
+    #         "welcome.html", "Welcome To Vaulta",
+    #         to=[email],
+    #         context={"name": new_user.first_name, "to": [email], "subject": "Welcome To Vaulta"},
+    #     )
+    #     logger.info(f"[onboarding/complete] Welcome email sent to {email}")
+    # except Exception as e:
+    #     logger.error(f"[onboarding/complete] Error sending welcome email: {e}")
+    # Format a nice Slack message with document links
+        
+    doc_links = "\n".join([f"• <{url}|{name.replace('_', ' ').title()}>" for name, url in urls.items()])
 
-    send_slack_message("rates", {
-        "message": f"New onboarding complete: {email}",
-        "persona_inquiry_id": inquiry_id,
-        "documents_uploaded": len(urls),
-    })
+    message = f"""*New Onboarding*
+    Email: {email}
+    Persona Inquiry Id: {inquiry_id}
+    Phone: {phone}
+    {doc_links}"""
+
+    send_slack_message("rates", message)
+
+    # send_slack_message("rates", {
+    #     "message": f"New onboarding complete: {email}",
+    #     "persona_inquiry_id": inquiry_id,
+    #     "documents_uploaded": len(urls),
+    #     "document_urls": urls
+    # })
 
     logger.info(f"[onboarding/complete] Onboarding complete for {email}, user_id={user_id}, docs={len(urls)}")
     return {
-        "message": "Onboarding complete — account created",
-        "user_id": user_id,
+        "message": "Documents submitted successfully — pending review",
+        "reference_id": reference_id,
         "email": email,
-        "first_name": new_user.first_name,
-        "last_name": new_user.last_name,
         "persona_status": kyc.persona_status,
         "persona_inquiry_id": kyc.persona_inquiry_id,
         "documents_uploaded": len(urls),
