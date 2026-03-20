@@ -889,7 +889,7 @@ async def complete_onboarding(
     UBO List:\n{ubo_lines}
     {doc_links}"""
 
-    send_slack_message("rates", message)
+    send_slack_message("onboarding", message)
 
     logger.info(f"[onboarding/complete] Onboarding complete for {email}, user_id={user_id}, docs={len(urls)}")
     return {
