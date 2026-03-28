@@ -247,6 +247,10 @@ class UboVerifyRequest(BaseModel):
 
 
 ALLOWED_PERSONA_STATUSES = {"completed", "approved"}
+
+
+def _is_user_verified_for_login(user: models.User) -> bool:
+    return bool(getattr(user, "verified", False))
     
 def get_db():
     db = SessionLocal()
@@ -298,6 +302,14 @@ async def login(user_data: UserLogin, db: Session = Depends(get_db)):
         status_code=404,
         content={"message": "User was not found"}
     )
+
+    if not _is_user_verified_for_login(user):
+        logger_auth.warning(f"[login] Failed login attempt - user not verified: {email}")
+        send_private_slack(f"❌ Login blocked - user not verified: {email}")
+        raise HTTPException(
+            status_code=403,
+            detail="User is not verified. Please complete onboarding verification before logging in.",
+        )
     
     otp = generate_otp()
     to = [user.email]
@@ -481,6 +493,7 @@ async def register(user_data: UserCreate, db: Session = Depends(get_db)):
         last_name = user_data.last_name,
         email = user_data.email,
         phone = user_data.phone,
+        verified=False,
         # password = user_data.password  #TODO: In production, hash the password
     )
     
@@ -843,6 +856,16 @@ async def complete_onboarding(
     kyc.verified_at = datetime.now()
     for field, url in urls.items():
         setattr(kyc, field, url)
+
+    existing_user = db.query(models.User).filter(models.User.email == email).first()
+    if existing_user:
+        existing_user.verified = True
+        if not existing_user.first_name and first_name:
+            existing_user.first_name = first_name
+        if not existing_user.last_name and last_name:
+            existing_user.last_name = last_name
+        if not existing_user.phone and phone:
+            existing_user.phone = phone
 
     db.commit()
     db.refresh(kyc)

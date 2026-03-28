@@ -11,6 +11,7 @@ class User(Base):
     role = Column(String)
     email = Column(String, unique=True, index=True)
     phone = Column(String)
+    verified = Column(Boolean, default=False)
     password = Column(String)
     # usermetadata = Column(String, nullable=True)
     # user_meta_data = Column(String, nullable=True)
