@@ -130,6 +130,8 @@ class UserKyc(Base):
     id = Column(Integer, primary_key=True, index=True)
     user_id = Column(String, ForeignKey("users.id"), unique=True, nullable=True)
     reference_id = Column(String, unique=True, nullable=False)
+    full_name = Column(String, nullable=True)
+    company_name = Column(String, nullable=True)
     email = Column(String, nullable=True)
     phone = Column(String, nullable=True)
     persona_inquiry_id = Column(String, nullable=True)

@@ -730,6 +730,8 @@ async def get_onboarding_status(reference_id: str, db: Session = Depends(get_db)
 async def complete_onboarding(
     inquiry_id: Optional[str] = Form(None),
     reference_id: Optional[str] = Form(None),
+    full_name: Optional[str] = Form(None),
+    company_name: Optional[str] = Form(None),
     email: str = Form(...),
     phone: str = Form(...),
     certificate_of_incorporation: UploadFile = File(None),
@@ -849,6 +851,8 @@ async def complete_onboarding(
 
     # 7. Link KYC record to the new user
     # kyc.user_id = user_id
+    kyc.full_name = full_name
+    kyc.company_name = company_name
     kyc.email = email
     kyc.phone = phone
     kyc.persona_inquiry_id = inquiry_id
@@ -902,6 +906,8 @@ async def complete_onboarding(
     )
 
     message = f"""*New Onboarding*
+    Full Name: {full_name or 'N/A'}
+    Company Name: {company_name or 'N/A'}
     Email: {email}
     Persona Inquiry Id: {inquiry_id or 'Not required'}
     Phone: {phone}
