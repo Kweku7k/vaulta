@@ -24,7 +24,7 @@ import models
 from sqlalchemy.orm import Session
 
 from services import get_customer_by_email, issue_jwt_token, send_otp_to_email_for_login
-from utils import generate_otp, send_email, send_slack, send_private_slack, send_slack_message
+from utils import generate_otp, send_email, send_slack, send_private_slack, send_slack_message, send_slack_file
 from fastapi import Body
 import hashlib
 import jwt
@@ -825,7 +825,7 @@ async def complete_onboarding(
     # db.add(new_user)
     # db.flush()
 
-    # 6. Upload documents to Firebase
+    # 6. Upload documents to Slack (direct) to avoid Firebase dependency issues
     files = {
         "certificate_of_incorporation": certificate_of_incorporation,
         "memorandum_and_articles": memorandum_and_articles,
@@ -841,13 +841,30 @@ async def complete_onboarding(
 
     urls: dict[str, str] = {}
     if provided:
-        try:
-            logger.info(f"[onboarding/complete] Uploading {len(provided)} documents to Firebase")
-            urls = await upload_documents(provided, folder=f"onboarding/{user_id}")
-            logger.info(f"[onboarding/complete] Upload complete: {list(urls.keys())}")
-        except ValueError as e:
-            logger.error(f"[onboarding/complete] Document upload error: {e}")
-            raise HTTPException(status_code=400, detail=str(e))
+        logger.info(f"[onboarding/complete] Uploading {len(provided)} documents to Slack")
+        for field_name, file in provided.items():
+            await file.seek(0)
+            file_bytes = await file.read()
+            slack_result = send_slack_file(
+                channel="onboarding",
+                filename=file.filename,
+                content=file_bytes,
+                content_type=file.content_type,
+                initial_comment=f"Onboarding document: {field_name} ({email})",
+            )
+
+            if not slack_result or not slack_result.get("ok"):
+                logger.error(
+                    f"[onboarding/complete] Slack file upload failed for {field_name}: {slack_result}"
+                )
+                continue
+
+            file_obj = slack_result.get("file", {})
+            permalink = file_obj.get("permalink")
+            if permalink:
+                urls[field_name] = permalink
+
+        logger.info(f"[onboarding/complete] Slack upload complete: {list(urls.keys())}")
 
     # 7. Link KYC record to the new user
     # kyc.user_id = user_id
@@ -955,12 +972,18 @@ async def create_quote_route(data: QuoteRequest, db:Session = Depends(get_db)):
     
     return response
 
+# @app.get("/api/v1/pairs")
+# async def get_markets_route():
+#     markets = get_markets()
+#     filtered_markets = [m['name'].replace("/","-") for m in markets]
+#     return {"markets": filtered_markets}
+    
+SUPPORTED_PAIRS = ["USDC-GHS", "GHS-USDC", "USDC-USDT"]
+
 @app.get("/api/v1/pairs")
 async def get_markets_route():
-    markets = get_markets()
-    filtered_markets = [m['name'].replace("/","-") for m in markets]
-    return {"markets": filtered_markets}
-    
+    return {"markets": SUPPORTED_PAIRS}
+
 @app.get("/api/v1/cron_rates")
 async def get_todays_cron_rates():
     pair = "USDT-GHS" 

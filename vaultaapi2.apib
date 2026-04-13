@@ -1,0 +1,260 @@
+
+# Vaulta API — Developer Documentation (v1)
+
+Welcome to the **Vaulta API**. Vaulta provides programmable finance primitives — accounts, payments, quotes & trades, cards, yield, and analytics — through a simple REST API.
+
+> Base URL: `https://api.vaulta.digital/v1`  
+> Dashboard: `https://dashboard.vaulta.digital`  
+> OpenAPI: `https://api.vaulta.digital/openapi.json` *(example path)*
+
+---
+
+## Quick Start
+
+1. **Create an API key** in the Vaulta Dashboard → *Developers → API keys*.
+2. **Authenticate** by passing your key with each request.
+3. **Use idempotency** for all POST operations.
+4. **Monitor** requests in *Developers → Logs* and configure **Webhooks**.
+
+```http
+# Authentication
+x-api-key: VAULTA_TEST_123456789
+
+# Idempotency (recommended for POST/PUT/PATCH)
+Idempotency-Key: 5d20bb83-3b36-4e4f-8c2f-3a8f2b1f8f4a
+```
+
+---
+
+## Authentication
+
+Use an API key via request header:
+
+```bash
+curl -H "x-api-key: <YOUR_KEY>" https://api.vaulta.digital/v1/ping
+```
+
+- Keys are **scoped** to an environment: `test` and `live`.
+- Rotate keys regularly; revoke compromised keys in the dashboard.
+- For server-to-server OAuth (optional), Vaulta supports client-credential tokens under `/oauth/token`.
+
+---
+
+## Environments
+
+| Environment | Base URL                        |
+|---|---|
+| Test        | `https://api.sandbox.vaulta.digital/v1` |
+| Live        | `https://api.vaulta.digital/v1`        |
+
+---
+
+## Errors
+
+Vaulta uses conventional HTTP status codes. Error payloads have a consistent shape.
+
+```json
+{
+  "error": {
+    "type": "invalid_request",
+    "message": "amount must be greater than 0",
+    "code": "amount_gt_zero",
+    "request_id": "req_01JAZ3..."
+  }
+}
+```
+
+Common status codes: `200/201`, `400`, `401`, `403`, `404`, `409`, `422`, `429`, `500`.
+
+---
+
+## Pagination
+
+List endpoints return a cursor-based pagination envelope:
+
+```json
+{
+  "data": [ ... ],
+  "has_more": true,
+  "next_cursor": "eyJvZmZzZXQiOjEwMH0="
+}
+```
+
+Pass `?cursor=` and `?limit=` to paginate.
+
+---
+
+## Rate Limits
+
+- Default: **100 requests / second / key** (soft limit).  
+- Bursting supported; sustained overages return `429` with `Retry-After` header.
+
+---
+
+## Idempotency
+
+For any non-GET write: include `Idempotency-Key`. Vaulta guarantees *at-most-once* semantics for 24 hours per unique key + route combination.
+
+---
+
+
+# REST Resources
+
+## 1) Accounts
+
+Vaulta Accounts are programmable USD/stablecoin accounts with policy controls.
+
+### Create account
+`POST /accounts`
+
+```json
+{
+  "name": "Acme Operating USD",
+  "currency": "USD",
+  "metadata": {"cost_center": "ops"}
+}
+```
+
+**Response** `201`
+
+```json
+{
+  "id": "acct_01JAZF...",
+  "name": "Acme Operating USD",
+  "currency": "USD",
+  "status": "active",
+  "balances": {"available": "0.00", "pending": "0.00"},
+  "created_at": "2025-09-19T12:34:56Z",
+  "metadata": {"cost_center": "ops"}
+}
+```
+
+### Get account
+`GET /accounts/{account_id}`
+
+### List accounts
+`GET /accounts?cursor=&limit=&status=`
+
+### Update account metadata
+`PATCH /accounts/{account_id}`
+
+```json
+{
+  "metadata": {"owner":"finance@acme.com"}
+}
+```
+
+### Policies
+`PUT /accounts/{id}/policies`
+
+```json
+{
+  "spending_limits": [{"interval":"daily","amount":"100000.00","currency":"USD"}],
+  "allowed_countries": ["US","GB","GH","NG"],
+  "approvals": {"thresholds":[{"gte":"50000.00","approvers":["user_123","user_456"]}]}
+}
+```
+
+---
+
+## 2) Payments
+
+Create payments for outgoing transfers (e.g., USDC on-chain or internal rail).
+
+### Create payment
+`POST /payments`
+
+```json
+{
+  "source_account_id": "acct_01JAZF...",
+  "amount": "2500.00",
+  "currency": "USD",
+  "destination": {
+    "rail": "stablecoin",
+    "network": "solana",
+    "address": "6oK8...abc"
+  },
+  "description": "September contractor payout",
+  "client_reference": "INV-9283"
+}
+```
+
+**Response** `201`
+
+```json
+{
+  "id": "pay_01JAZG...",
+  "status": "pending",
+  "amount": "2500.00",
+  "currency": "USD",
+  "fx": null,
+  "fees": [{"type":"network","amount":"0.12","currency":"USD"}],
+  "created_at": "2025-09-19T12:40:10Z"
+}
+```
+
+### Get / List / Cancel
+- `GET /payments/{payment_id}`
+- `GET /payments?status=pending&cursor=&limit=`
+- `POST /payments/{payment_id}/cancel` (best-effort if not yet broadcast/settled)
+
+### Transfers (internal)
+`POST /transfers` transfers between Vaulta accounts
+
+```json
+{
+  "source_account_id": "acct_src",
+  "destination_account_id": "acct_dst",
+  "amount": "100.00",
+  "currency": "USD",
+  "memo": "Move funds to treasury"
+}
+```
+
+---
+
+## 3) Quotes & Trades
+
+### Create quote
+`POST /quotes`
+
+```json
+{
+  "pair": "USDC-USD",
+  "side": "sell",
+  "amount_base": "1000.00"
+}
+```
+
+**Response**
+```json
+{
+  "id": "qt_01JAZH...",
+  "pair": "USDC-USD",
+  "side": "sell",
+  "price": "0.9995",
+  "expires_at": "2025-09-19T12:45:00Z"
+}
+```
+
+### Execute trade
+`POST /trades`
+
+```json
+{
+  "quote_id": "qt_01JAZH...",
+  "account_id": "acct_01JAZF..."
+}
+```
+
+### Get trade
+`GET /trades/{trade_id}`
+
+### Pairs
+`GET /pairs` → returns supported instruments (e.g., `USDC-USD`, `SOL-USD`).
+
+---
+
+## Changelog
+
+- **2025‑09‑19**: Initial public draft for Vaulta API v1.

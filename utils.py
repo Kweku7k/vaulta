@@ -97,3 +97,49 @@ def send_slack_message(channel: str, message: str, token: str = None):
     except Exception as e:
         print(f"Error sending Slack message via API: {e}")
         return False
+
+
+def send_slack_file(
+    channel: str,
+    filename: str,
+    content: bytes,
+    initial_comment: str | None = None,
+    token: str = None,
+    content_type: str | None = None,
+):
+    """Upload a file directly to Slack using files.upload."""
+    if token is None:
+        token = os.getenv("SLACK_BOT_TOKEN")
+
+    if not token:
+        return {"ok": False, "error": "Missing SLACK_BOT_TOKEN"}
+
+    try:
+        headers = {
+            "Authorization": f"Bearer {token}",
+        }
+        data = {
+            "channels": channel,
+        }
+        if initial_comment:
+            data["initial_comment"] = initial_comment
+
+        files = {
+            "file": (
+                filename,
+                content,
+                content_type or "application/octet-stream",
+            )
+        }
+
+        response = requests.post(
+            "https://slack.com/api/files.upload",
+            headers=headers,
+            data=data,
+            files=files,
+            timeout=30,
+        )
+        return response.json()
+    except Exception as e:
+        print(f"Error uploading file to Slack: {e}")
+        return {"ok": False, "error": str(e)}
