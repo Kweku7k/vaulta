@@ -726,6 +726,251 @@ async def get_onboarding_status(reference_id: str, db: Session = Depends(get_db)
     }
 
 
+# @app.post("/api/v1/onboarding/complete")
+# async def complete_onboarding(
+#     inquiry_id: Optional[str] = Form(None),
+#     reference_id: Optional[str] = Form(None),
+#     full_name: Optional[str] = Form(None),
+#     company_name: Optional[str] = Form(None),
+#     email: str = Form(...),
+#     phone: str = Form(...),
+#     certificate_of_incorporation: UploadFile = File(None),
+#     memorandum_and_articles: UploadFile = File(None),
+#     ubos_schedule: UploadFile = File(None),
+#     company_profile: UploadFile = File(None),
+#     id_documents: UploadFile = File(None),
+#     company_address_proof: UploadFile = File(None),
+#     regulatory_information: UploadFile = File(None),
+#     source_of_funds: UploadFile = File(None),
+#     db: Session = Depends(get_db),
+# ):
+#     """
+#     Single submission for new users: Persona inquiry_id + contact info + documents.
+#     No auth required — this creates the user account.
+#     """
+#     logger.info(
+#         f"[onboarding/complete] Request received: inquiry_id={inquiry_id}, reference_id={reference_id}, email={email}, phone={phone}"
+#     )
+
+#     first_name = ""
+#     last_name = ""
+#     persona_status = "completed"
+#     resolved_reference_id = reference_id
+
+#     # 1. Verify the Persona inquiry server-side when one is provided.
+#     if inquiry_id:
+#         attrs = await _fetch_persona_inquiry_attributes(inquiry_id, email, phone)
+#         resolved_reference_id = attrs.get("referenceId")
+#         logger.info(
+#             f"[onboarding/complete] Persona response: referenceId={resolved_reference_id}, status={attrs.get('status')}"
+#         )
+
+#         persona_status = attrs.get("status", "unknown")
+#         if persona_status not in ALLOWED_PERSONA_STATUSES:
+#             logger.warning(f"[onboarding/complete] Inquiry not eligible to continue: status={persona_status}")
+#             raise HTTPException(
+#                 status_code=400,
+#                 detail=f"Inquiry status is '{persona_status}', expected one of {sorted(ALLOWED_PERSONA_STATUSES)}",
+#             )
+
+#         # Extract verified name from Persona when available.
+#         first_name = attrs.get("nameFirst", "")
+#         last_name = attrs.get("nameLast", "")
+#         logger.info(f"[onboarding/complete] Persona verified name: {first_name} {last_name}")
+#     elif not resolved_reference_id:
+#         raise HTTPException(status_code=400, detail="Missing onboarding reference")
+#     else:
+#         logger.info(
+#             f"[onboarding/complete] No Persona inquiry provided; defaulting persona_status={persona_status} for reference_id={resolved_reference_id}"
+#         )
+
+#     # 2. Find the KYC record by reference_id
+#     kyc = db.query(models.UserKyc).filter(models.UserKyc.reference_id == resolved_reference_id).first()
+#     if not kyc:
+#         logger.error(f"[onboarding/complete] No KYC record for reference_id={resolved_reference_id}")
+#         raise HTTPException(status_code=400, detail="No onboarding session found for this inquiry")
+
+#     # TODO: Approve on prod.
+#     # if kyc.user_id:
+#     #     logger.warning(f"[onboarding/complete] Already completed: reference_id={reference_id}, user_id={kyc.user_id}")
+#     #     raise HTTPException(status_code=409, detail="Onboarding already completed for this session")
+
+#     ubos = db.query(models.UserKycUbo).filter(models.UserKycUbo.kyc_id == kyc.id).all()
+#     if not ubos:
+#         logger.warning(f"[onboarding/complete] No UBOs submitted for reference_id={reference_id}")
+#         raise HTTPException(status_code=400, detail="At least one UBO must be added and verified")
+
+#     unverified_ubos = [u for u in ubos if u.persona_status not in ALLOWED_PERSONA_STATUSES]
+#     if unverified_ubos:
+#         missing = ", ".join([u.full_name for u in unverified_ubos])
+#         logger.warning(f"[onboarding/complete] Unverified UBOs: {missing}")
+#         raise HTTPException(status_code=400, detail=f"These UBOs are not verified yet: {missing}")
+
+#     # 4. Check if email is already registered
+#     # existing = db.query(models.User).filter(models.User.email == email).first()
+#     # if existing:
+#     #     logger.warning(f"[onboarding/complete] Email already registered: {email}")
+#     #     raise HTTPException(status_code=400, detail="Email already registered")
+
+#     # 5. Create the user account
+#     user_id = secrets.token_hex(8)
+#     logger.info(f"[onboarding/complete] Creating user: user_id={user_id}, email={email}")
+
+
+#     # 6. Read document bytes upfront (non-fatal)
+#     files = {
+#         "certificate_of_incorporation": certificate_of_incorporation,
+#         "memorandum_and_articles": memorandum_and_articles,
+#         "ubos_schedule": ubos_schedule,
+#         "company_profile": company_profile,
+#         "id_documents": id_documents,
+#         "company_address_proof": company_address_proof,
+#         "regulatory_information": regulatory_information,
+#         "source_of_funds": source_of_funds,
+#     }
+#     provided = {k: v for k, v in files.items() if v is not None and v.filename}
+#     logger.info(f"[onboarding/complete] Documents provided: {list(provided.keys())}")
+
+#     urls: dict[str, str] = {}
+#     file_bytes_cache: dict[str, tuple[str, bytes, str]] = {}
+#     try:
+#         for field_name, file in provided.items():
+#             await file.seek(0)
+#             raw = await file.read()
+#             file_bytes_cache[field_name] = (file.filename, raw, file.content_type or "application/octet-stream")
+#         logger.info(f"[onboarding/complete] Read {len(file_bytes_cache)} document(s) into memory")
+#     except Exception as e:
+#         logger.error(f"[onboarding/complete] Failed to read document bytes (non-fatal): {e}")
+
+#     # 7. Link KYC record to the new user
+#     # kyc.user_id = user_id
+#     kyc.full_name = full_name
+#     kyc.company_name = company_name
+#     kyc.email = email
+#     kyc.phone = phone
+#     kyc.persona_inquiry_id = inquiry_id
+#     kyc.persona_status = persona_status
+#     kyc.verified_at = datetime.now()
+#     for field, url in urls.items():
+#         setattr(kyc, field, url)
+
+#     existing_user = db.query(models.User).filter(models.User.email == email).first()
+#     if existing_user:
+#         existing_user.verified = True
+#         if not existing_user.first_name and first_name:
+#             existing_user.first_name = first_name
+#         if not existing_user.last_name and last_name:
+#             existing_user.last_name = last_name
+#         if not existing_user.phone and phone:
+#             existing_user.phone = phone
+
+#     db.commit()
+#     db.refresh(kyc)
+#     logger.info(f"[onboarding/complete] KYC record linked to user_id={user_id}")
+
+#     # 8. Send Slack notification with basic info (non-fatal)
+#     try:
+#         persona_inquiry_url = (
+#             f"https://app.withpersona.com/dashboard/inquiries/{kyc.persona_inquiry_id}"
+#             if kyc.persona_inquiry_id
+#             else None
+#         )
+
+#         ubo_lines = "\\n".join([
+#             f"- {u.full_name} ({u.persona_status}, ownership: {(f'{u.ownership_percentage:g}%' if u.ownership_percentage is not None else 'N/A')})"
+#             for u in ubos
+#         ])
+
+#         persona_link_line = (
+#             f"    Persona Inquiry Link: <{persona_inquiry_url}|Open Inquiry>\n"
+#             if persona_inquiry_url
+#             else ""
+#         )
+
+#         message = f"""*New Onboarding*
+#     Full Name: {full_name or 'N/A'}
+#     Company Name: {company_name or 'N/A'}
+#     Email: {email}
+#     Persona Inquiry Id: {inquiry_id or 'Not required'}
+#     Phone: {phone}
+#     Persona Status: {kyc.persona_status},
+#     Persona Inquiry_id: {kyc.persona_inquiry_id or 'Not required'},
+# {persona_link_line}    UBO Count: {len(ubos)},
+#     Verified UBOs: {len([u for u in ubos if u.persona_status in ALLOWED_PERSONA_STATUSES])},
+#     UBO List:\n{ubo_lines}
+#     Documents: {len(file_bytes_cache)} file(s) — see compliance email"""
+
+#         send_slack_message("onboarding", message)
+#         logger.info(f"[onboarding/complete] Slack notification sent for {email}")
+#     except Exception as e:
+#         logger.error(f"[onboarding/complete] Failed to send Slack notification (non-fatal): {e}")
+
+#     # 9. Email documents to compliance (non-fatal)
+#     if file_bytes_cache:
+#         try:
+#             email_attachments = [
+#                 {"filename": fname, "content": list(raw)}
+#                 for fname, raw, _ in file_bytes_cache.values()
+#             ]
+#             doc_list_html = "".join(
+#                 f"<li>{name.replace('_', ' ').title()}</li>"
+#                 for name in file_bytes_cache
+#             )
+#             compliance_html = f"""
+#                 <p>A new onboarding submission has been received.</p>
+#                 <ul>
+#                 <li><strong>Full Name:</strong> {full_name or 'N/A'}</li>
+#                 <li><strong>Company Name:</strong> {company_name or 'N/A'}</li>
+#                 <li><strong>Email:</strong> {email}</li>
+#                 <li><strong>Phone:</strong> {phone or 'N/A'}</li>
+#                 </ul>
+#                 <p>Documents attached:</p>
+#                 <ul>{doc_list_html}</ul>
+#                 """
+#             send_email(
+#                 template=None,
+#                 subject=f"New Onboarding Documents — {company_name or full_name or email}",
+#                 to=["mr.adumatta@gmail.com"],
+#                 context={},
+#                 from_email="onboarding@noreply.vaulta.digital",
+#                 attachments=email_attachments,
+#                 html=compliance_html,
+#             )
+#             logger.info(f"[onboarding/complete] Compliance email sent for {email}")
+#         except Exception as e:
+#             logger.error(f"[onboarding/complete] Failed to send compliance email (non-fatal): {e}")
+
+#     logger.info(f"[onboarding/complete] Onboarding complete for {email}, user_id={user_id}, docs={len(urls)}")
+#     return {
+#         "message": "Documents submitted successfully — pending review",
+#         "reference_id": resolved_reference_id,
+#         "email": email,
+#         "persona_status": kyc.persona_status,
+#         "persona_inquiry_id": kyc.persona_inquiry_id,
+#         "documents_uploaded": len(urls),
+#         "document_urls": urls,
+#     }
+
+# try:
+    #     send_email(
+    #         "welcome.html", "Welcome To Vaulta",
+    #         to=[email],
+    #         context={"name": new_user.first_name, "to": [email], "subject": "Welcome To Vaulta"},
+    #     )
+    #     logger.info(f"[onboarding/complete] Welcome email sent to {email}")
+    # except Exception as e:
+    #     logger.error(f"[onboarding/complete] Error sending welcome email: {e}")
+    # Format a nice Slack message with document links
+        
+        
+    # 4. Check if email is already registered
+    # existing = db.query(models.User).filter(models.User.email == email).first()
+    # if existing:
+    #     logger.warning(f"[onboarding/complete] Email already registered: {email}")
+    #     raise HTTPException(status_code=400, detail="Email already registered")
+
+    # 5. Create the user account
+    
 @app.post("/api/v1/onboarding/complete")
 async def complete_onboarding(
     inquiry_id: Optional[str] = Form(None),
@@ -734,14 +979,14 @@ async def complete_onboarding(
     company_name: Optional[str] = Form(None),
     email: str = Form(...),
     phone: str = Form(...),
-    certificate_of_incorporation: UploadFile = File(None),
-    memorandum_and_articles: UploadFile = File(None),
-    ubos_schedule: UploadFile = File(None),
-    company_profile: UploadFile = File(None),
-    id_documents: UploadFile = File(None),
-    company_address_proof: UploadFile = File(None),
-    regulatory_information: UploadFile = File(None),
-    source_of_funds: UploadFile = File(None),
+    certificate_of_incorporation: Optional[str] = Form(None),
+    memorandum_and_articles: Optional[str] = Form(None),
+    ubos_schedule: Optional[str] = Form(None),
+    company_profile: Optional[str] = Form(None),
+    id_documents: Optional[str] = Form(None),
+    company_address_proof: Optional[str] = Form(None),
+    regulatory_information: Optional[str] = Form(None),
+    source_of_funds: Optional[str] = Form(None),
     db: Session = Depends(get_db),
 ):
     """
@@ -805,14 +1050,6 @@ async def complete_onboarding(
         missing = ", ".join([u.full_name for u in unverified_ubos])
         logger.warning(f"[onboarding/complete] Unverified UBOs: {missing}")
         raise HTTPException(status_code=400, detail=f"These UBOs are not verified yet: {missing}")
-
-    # 4. Check if email is already registered
-    # existing = db.query(models.User).filter(models.User.email == email).first()
-    # if existing:
-    #     logger.warning(f"[onboarding/complete] Email already registered: {email}")
-    #     raise HTTPException(status_code=400, detail="Email already registered")
-
-    # 5. Create the user account
     user_id = secrets.token_hex(8)
     logger.info(f"[onboarding/complete] Creating user: user_id={user_id}, email={email}")
     # new_user = models.User(
@@ -825,8 +1062,8 @@ async def complete_onboarding(
     # db.add(new_user)
     # db.flush()
 
-    # 6. Read document bytes upfront (non-fatal)
-    files = {
+    # 6. Collect Firebase document URLs (uploaded by the frontend)
+    doc_fields = {
         "certificate_of_incorporation": certificate_of_incorporation,
         "memorandum_and_articles": memorandum_and_articles,
         "ubos_schedule": ubos_schedule,
@@ -836,19 +1073,8 @@ async def complete_onboarding(
         "regulatory_information": regulatory_information,
         "source_of_funds": source_of_funds,
     }
-    provided = {k: v for k, v in files.items() if v is not None and v.filename}
-    logger.info(f"[onboarding/complete] Documents provided: {list(provided.keys())}")
-
-    urls: dict[str, str] = {}
-    file_bytes_cache: dict[str, tuple[str, bytes, str]] = {}
-    try:
-        for field_name, file in provided.items():
-            await file.seek(0)
-            raw = await file.read()
-            file_bytes_cache[field_name] = (file.filename, raw, file.content_type or "application/octet-stream")
-        logger.info(f"[onboarding/complete] Read {len(file_bytes_cache)} document(s) into memory")
-    except Exception as e:
-        logger.error(f"[onboarding/complete] Failed to read document bytes (non-fatal): {e}")
+    urls: dict[str, str] = {k: v for k, v in doc_fields.items() if v}
+    logger.info(f"[onboarding/complete] Document URLs provided: {list(urls.keys())}")
 
     # 7. Link KYC record to the new user
     # kyc.user_id = user_id
@@ -874,10 +1100,12 @@ async def complete_onboarding(
 
     db.commit()
     db.refresh(kyc)
+    # db.refresh(new_user)
     logger.info(f"[onboarding/complete] KYC record linked to user_id={user_id}")
 
     # 8. Send Slack notification with basic info (non-fatal)
     try:
+        doc_links = "\n".join([f"• <{url}|{name.replace('_', ' ').title()}>" for name, url in urls.items()])
         persona_inquiry_url = (
             f"https://app.withpersona.com/dashboard/inquiries/{kyc.persona_inquiry_id}"
             if kyc.persona_inquiry_id
@@ -906,23 +1134,19 @@ async def complete_onboarding(
 {persona_link_line}    UBO Count: {len(ubos)},
     Verified UBOs: {len([u for u in ubos if u.persona_status in ALLOWED_PERSONA_STATUSES])},
     UBO List:\n{ubo_lines}
-    Documents: {len(file_bytes_cache)} file(s) — see compliance email"""
+    Documents: {len(urls)} file(s) — see compliance email"""
 
         send_slack_message("onboarding", message)
         logger.info(f"[onboarding/complete] Slack notification sent for {email}")
     except Exception as e:
         logger.error(f"[onboarding/complete] Failed to send Slack notification (non-fatal): {e}")
 
-    # 9. Email documents to compliance (non-fatal)
-    if file_bytes_cache:
+    # 9. Email document links to compliance (non-fatal)
+    if urls:
         try:
-            email_attachments = [
-                {"filename": fname, "content": list(raw)}
-                for fname, raw, _ in file_bytes_cache.values()
-            ]
             doc_list_html = "".join(
-                f"<li>{name.replace('_', ' ').title()}</li>"
-                for name in file_bytes_cache
+                f'<li><a href="{url}">{name.replace("_", " ").title()}</a></li>'
+                for name, url in urls.items()
             )
             compliance_html = f"""
 <p>A new onboarding submission has been received.</p>
@@ -932,16 +1156,15 @@ async def complete_onboarding(
   <li><strong>Email:</strong> {email}</li>
   <li><strong>Phone:</strong> {phone or 'N/A'}</li>
 </ul>
-<p>Documents attached:</p>
+<p>Documents:</p>
 <ul>{doc_list_html}</ul>
 """
             send_email(
                 template=None,
                 subject=f"New Onboarding Documents — {company_name or full_name or email}",
-                to=["mr.adumatta@gmail.com"],
+                to=["compliance@vaulta.digital"],
                 context={},
                 from_email="onboarding@noreply.vaulta.digital",
-                attachments=email_attachments,
                 html=compliance_html,
             )
             logger.info(f"[onboarding/complete] Compliance email sent for {email}")
@@ -958,6 +1181,7 @@ async def complete_onboarding(
         "documents_uploaded": len(urls),
         "document_urls": urls,
     }
+
 
 @app.get("/")
 async def root():
