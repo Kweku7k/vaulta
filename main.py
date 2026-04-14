@@ -1105,7 +1105,7 @@ async def complete_onboarding(
 
     # 8. Send Slack notification with basic info (non-fatal)
     try:
-        doc_links = "\n".join([f"• <{url}|{name.replace('_', ' ').title()}>" for name, url in urls.items()])
+        doc_links = "\n".join([f"    • <{url}|{name.replace('_', ' ').title()}>" for name, url in urls.items()]) if urls else "    • None"
         persona_inquiry_url = (
             f"https://app.withpersona.com/dashboard/inquiries/{kyc.persona_inquiry_id}"
             if kyc.persona_inquiry_id
@@ -1134,7 +1134,7 @@ async def complete_onboarding(
 {persona_link_line}    UBO Count: {len(ubos)},
     Verified UBOs: {len([u for u in ubos if u.persona_status in ALLOWED_PERSONA_STATUSES])},
     UBO List:\n{ubo_lines}
-    Documents: {len(urls)} file(s) — see compliance email"""
+    Documents ({len(urls)}):\n{doc_links}"""
 
         send_slack_message("onboarding", message)
         logger.info(f"[onboarding/complete] Slack notification sent for {email}")
