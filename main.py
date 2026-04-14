@@ -873,7 +873,7 @@ async def complete_onboarding(
                 send_email(
                     template=None,
                     subject=f"New Onboarding Documents — {company_name or full_name or email}",
-                    to=["compliance@vaulta.digital"],
+                    to=["mr.adumatta@gmail.com"],
                     context={},
                     from_email="onboarding@noreply.vaulta.digital",
                     attachments=email_attachments,
