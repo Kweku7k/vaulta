@@ -825,7 +825,7 @@ async def complete_onboarding(
     # db.add(new_user)
     # db.flush()
 
-    # 6. Upload documents to Slack (direct) to avoid Firebase dependency issues
+    # 6. Read document bytes upfront (non-fatal)
     files = {
         "certificate_of_incorporation": certificate_of_incorporation,
         "memorandum_and_articles": memorandum_and_articles,
@@ -840,78 +840,15 @@ async def complete_onboarding(
     logger.info(f"[onboarding/complete] Documents provided: {list(provided.keys())}")
 
     urls: dict[str, str] = {}
+    file_bytes_cache: dict[str, tuple[str, bytes, str]] = {}
     try:
-        # Pre-read all file bytes once so they can be reused for email and Slack
-        file_bytes_cache: dict[str, tuple[str, bytes, str]] = {}
         for field_name, file in provided.items():
             await file.seek(0)
             raw = await file.read()
             file_bytes_cache[field_name] = (file.filename, raw, file.content_type or "application/octet-stream")
-
-        # 6a. Email documents to compliance before Slack/Firebase
-        if file_bytes_cache:
-            try:
-                email_attachments = [
-                    {"filename": fname, "content": list(raw)}
-                    for fname, raw, _ in file_bytes_cache.values()
-                ]
-                doc_list_html = "".join(
-                    f"<li>{name.replace('_', ' ').title()}</li>"
-                    for name in file_bytes_cache
-                )
-                compliance_html = f"""
-<p>A new onboarding submission has been received.</p>
-<ul>
-  <li><strong>Full Name:</strong> {full_name or 'N/A'}</li>
-  <li><strong>Company Name:</strong> {company_name or 'N/A'}</li>
-  <li><strong>Email:</strong> {email}</li>
-  <li><strong>Phone:</strong> {phone or 'N/A'}</li>
-</ul>
-<p>Documents attached:</p>
-<ul>{doc_list_html}</ul>
-"""
-                send_email(
-                    template=None,
-                    subject=f"New Onboarding Documents — {company_name or full_name or email}",
-                    to=["mr.adumatta@gmail.com"],
-                    context={},
-                    from_email="onboarding@noreply.vaulta.digital",
-                    attachments=email_attachments,
-                    html=compliance_html,
-                )
-                logger.info(f"[onboarding/complete] Compliance email sent for {email}")
-            except Exception as e:
-                logger.error(f"[onboarding/complete] Failed to send compliance email: {e}")
-
-        # 6b. Upload documents to Slack
-        if file_bytes_cache:
-            logger.info(f"[onboarding/complete] Uploading {len(file_bytes_cache)} documents to Slack")
-            for field_name, (filename, file_bytes, content_type) in file_bytes_cache.items():
-                try:
-                    slack_result = send_slack_file(
-                        channel="onboarding",
-                        filename=filename,
-                        content=file_bytes,
-                        content_type=content_type,
-                        initial_comment=f"Onboarding document: {field_name} ({email})",
-                    )
-
-                    if not slack_result or not slack_result.get("ok"):
-                        logger.error(
-                            f"[onboarding/complete] Slack file upload failed for {field_name}: {slack_result}"
-                        )
-                        continue
-
-                    file_obj = slack_result.get("file", {})
-                    permalink = file_obj.get("permalink")
-                    if permalink:
-                        urls[field_name] = permalink
-                except Exception as e:
-                    logger.error(f"[onboarding/complete] Exception uploading {field_name} to Slack: {e}")
-
-            logger.info(f"[onboarding/complete] Slack upload complete: {list(urls.keys())}")
+        logger.info(f"[onboarding/complete] Read {len(file_bytes_cache)} document(s) into memory")
     except Exception as e:
-        logger.error(f"[onboarding/complete] Document processing failed (non-fatal): {e}")
+        logger.error(f"[onboarding/complete] Failed to read document bytes (non-fatal): {e}")
 
     # 7. Link KYC record to the new user
     # kyc.user_id = user_id
@@ -937,39 +874,28 @@ async def complete_onboarding(
 
     db.commit()
     db.refresh(kyc)
-    # db.refresh(new_user)
     logger.info(f"[onboarding/complete] KYC record linked to user_id={user_id}")
 
-    # try:
-    #     send_email(
-    #         "welcome.html", "Welcome To Vaulta",
-    #         to=[email],
-    #         context={"name": new_user.first_name, "to": [email], "subject": "Welcome To Vaulta"},
-    #     )
-    #     logger.info(f"[onboarding/complete] Welcome email sent to {email}")
-    # except Exception as e:
-    #     logger.error(f"[onboarding/complete] Error sending welcome email: {e}")
-    # Format a nice Slack message with document links
-        
-    doc_links = "\n".join([f"• <{url}|{name.replace('_', ' ').title()}>" for name, url in urls.items()])
-    persona_inquiry_url = (
-        f"https://app.withpersona.com/dashboard/inquiries/{kyc.persona_inquiry_id}"
-        if kyc.persona_inquiry_id
-        else None
-    )
+    # 8. Send Slack notification with basic info (non-fatal)
+    try:
+        persona_inquiry_url = (
+            f"https://app.withpersona.com/dashboard/inquiries/{kyc.persona_inquiry_id}"
+            if kyc.persona_inquiry_id
+            else None
+        )
 
-    ubo_lines = "\\n".join([
-        f"- {u.full_name} ({u.persona_status}, ownership: {(f'{u.ownership_percentage:g}%' if u.ownership_percentage is not None else 'N/A')})"
-        for u in ubos
-    ])
+        ubo_lines = "\\n".join([
+            f"- {u.full_name} ({u.persona_status}, ownership: {(f'{u.ownership_percentage:g}%' if u.ownership_percentage is not None else 'N/A')})"
+            for u in ubos
+        ])
 
-    persona_link_line = (
-        f"    Persona Inquiry Link: <{persona_inquiry_url}|Open Inquiry>\n"
-        if persona_inquiry_url
-        else ""
-    )
+        persona_link_line = (
+            f"    Persona Inquiry Link: <{persona_inquiry_url}|Open Inquiry>\n"
+            if persona_inquiry_url
+            else ""
+        )
 
-    message = f"""*New Onboarding*
+        message = f"""*New Onboarding*
     Full Name: {full_name or 'N/A'}
     Company Name: {company_name or 'N/A'}
     Email: {email}
@@ -980,9 +906,47 @@ async def complete_onboarding(
 {persona_link_line}    UBO Count: {len(ubos)},
     Verified UBOs: {len([u for u in ubos if u.persona_status in ALLOWED_PERSONA_STATUSES])},
     UBO List:\n{ubo_lines}
-    {doc_links}"""
+    Documents: {len(file_bytes_cache)} file(s) — see compliance email"""
 
-    send_slack_message("onboarding", message)
+        send_slack_message("onboarding", message)
+        logger.info(f"[onboarding/complete] Slack notification sent for {email}")
+    except Exception as e:
+        logger.error(f"[onboarding/complete] Failed to send Slack notification (non-fatal): {e}")
+
+    # 9. Email documents to compliance (non-fatal)
+    if file_bytes_cache:
+        try:
+            email_attachments = [
+                {"filename": fname, "content": list(raw)}
+                for fname, raw, _ in file_bytes_cache.values()
+            ]
+            doc_list_html = "".join(
+                f"<li>{name.replace('_', ' ').title()}</li>"
+                for name in file_bytes_cache
+            )
+            compliance_html = f"""
+<p>A new onboarding submission has been received.</p>
+<ul>
+  <li><strong>Full Name:</strong> {full_name or 'N/A'}</li>
+  <li><strong>Company Name:</strong> {company_name or 'N/A'}</li>
+  <li><strong>Email:</strong> {email}</li>
+  <li><strong>Phone:</strong> {phone or 'N/A'}</li>
+</ul>
+<p>Documents attached:</p>
+<ul>{doc_list_html}</ul>
+"""
+            send_email(
+                template=None,
+                subject=f"New Onboarding Documents — {company_name or full_name or email}",
+                to=["compliance@vaulta.digital"],
+                context={},
+                from_email="onboarding@noreply.vaulta.digital",
+                attachments=email_attachments,
+                html=compliance_html,
+            )
+            logger.info(f"[onboarding/complete] Compliance email sent for {email}")
+        except Exception as e:
+            logger.error(f"[onboarding/complete] Failed to send compliance email (non-fatal): {e}")
 
     logger.info(f"[onboarding/complete] Onboarding complete for {email}, user_id={user_id}, docs={len(urls)}")
     return {
