@@ -18,12 +18,15 @@ def render_template(template_name: str, context: dict = {}):
         print(f"Template rendering error: {e}")
         return "<p>Error rendering template</p>"
     
-def send_email(template, subject, to, context, from_email="onboarding@noreply.vaulta.digital"):
+def send_email(template, subject, to, context, from_email="onboarding@noreply.vaulta.digital", attachments=None, html=None):
 # def send_email(template="otp_input.html", subject="HELLO", context={"name":"Kweku", "subject":"Welcome Email"}):
     # context={"name":"Kweku", "subject":"Welcome Email"}
     print(type(context))
     pprint(context)
-    html_content = render_template(template, {**context, "subject": subject})
+    if html is None:
+        html_content = render_template(template, {**context, "subject": subject})
+    else:
+        html_content = html
     try:
         params: resend.Emails.SendParams = {
         "from": from_email,
@@ -31,6 +34,8 @@ def send_email(template, subject, to, context, from_email="onboarding@noreply.va
         "subject": subject,
         "html": html_content,
         }
+        if attachments:
+            params["attachments"] = attachments
         email: resend.Email = resend.Emails.send(params)
         return email
         # return jsonify(r)

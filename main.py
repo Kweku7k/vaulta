@@ -840,31 +840,78 @@ async def complete_onboarding(
     logger.info(f"[onboarding/complete] Documents provided: {list(provided.keys())}")
 
     urls: dict[str, str] = {}
-    if provided:
-        logger.info(f"[onboarding/complete] Uploading {len(provided)} documents to Slack")
+    try:
+        # Pre-read all file bytes once so they can be reused for email and Slack
+        file_bytes_cache: dict[str, tuple[str, bytes, str]] = {}
         for field_name, file in provided.items():
             await file.seek(0)
-            file_bytes = await file.read()
-            slack_result = send_slack_file(
-                channel="onboarding",
-                filename=file.filename,
-                content=file_bytes,
-                content_type=file.content_type,
-                initial_comment=f"Onboarding document: {field_name} ({email})",
-            )
+            raw = await file.read()
+            file_bytes_cache[field_name] = (file.filename, raw, file.content_type or "application/octet-stream")
 
-            if not slack_result or not slack_result.get("ok"):
-                logger.error(
-                    f"[onboarding/complete] Slack file upload failed for {field_name}: {slack_result}"
+        # 6a. Email documents to compliance before Slack/Firebase
+        if file_bytes_cache:
+            try:
+                email_attachments = [
+                    {"filename": fname, "content": list(raw)}
+                    for fname, raw, _ in file_bytes_cache.values()
+                ]
+                doc_list_html = "".join(
+                    f"<li>{name.replace('_', ' ').title()}</li>"
+                    for name in file_bytes_cache
                 )
-                continue
+                compliance_html = f"""
+<p>A new onboarding submission has been received.</p>
+<ul>
+  <li><strong>Full Name:</strong> {full_name or 'N/A'}</li>
+  <li><strong>Company Name:</strong> {company_name or 'N/A'}</li>
+  <li><strong>Email:</strong> {email}</li>
+  <li><strong>Phone:</strong> {phone or 'N/A'}</li>
+</ul>
+<p>Documents attached:</p>
+<ul>{doc_list_html}</ul>
+"""
+                send_email(
+                    template=None,
+                    subject=f"New Onboarding Documents — {company_name or full_name or email}",
+                    to=["compliance@vaulta.digital"],
+                    context={},
+                    from_email="onboarding@noreply.vaulta.digital",
+                    attachments=email_attachments,
+                    html=compliance_html,
+                )
+                logger.info(f"[onboarding/complete] Compliance email sent for {email}")
+            except Exception as e:
+                logger.error(f"[onboarding/complete] Failed to send compliance email: {e}")
 
-            file_obj = slack_result.get("file", {})
-            permalink = file_obj.get("permalink")
-            if permalink:
-                urls[field_name] = permalink
+        # 6b. Upload documents to Slack
+        if file_bytes_cache:
+            logger.info(f"[onboarding/complete] Uploading {len(file_bytes_cache)} documents to Slack")
+            for field_name, (filename, file_bytes, content_type) in file_bytes_cache.items():
+                try:
+                    slack_result = send_slack_file(
+                        channel="onboarding",
+                        filename=filename,
+                        content=file_bytes,
+                        content_type=content_type,
+                        initial_comment=f"Onboarding document: {field_name} ({email})",
+                    )
 
-        logger.info(f"[onboarding/complete] Slack upload complete: {list(urls.keys())}")
+                    if not slack_result or not slack_result.get("ok"):
+                        logger.error(
+                            f"[onboarding/complete] Slack file upload failed for {field_name}: {slack_result}"
+                        )
+                        continue
+
+                    file_obj = slack_result.get("file", {})
+                    permalink = file_obj.get("permalink")
+                    if permalink:
+                        urls[field_name] = permalink
+                except Exception as e:
+                    logger.error(f"[onboarding/complete] Exception uploading {field_name} to Slack: {e}")
+
+            logger.info(f"[onboarding/complete] Slack upload complete: {list(urls.keys())}")
+    except Exception as e:
+        logger.error(f"[onboarding/complete] Document processing failed (non-fatal): {e}")
 
     # 7. Link KYC record to the new user
     # kyc.user_id = user_id
