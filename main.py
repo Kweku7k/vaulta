@@ -303,9 +303,12 @@ class V2SubmitRequest(BaseModel):
 
 
 def _get_kyc_by_reference_or_404(reference_id: str, db: Session) -> models.UserKyc:
+    logger.info(f"[onboarding/v2/lookup] Looking up KYC by reference_id={reference_id}")
     kyc = db.query(models.UserKyc).filter(models.UserKyc.reference_id == reference_id).first()
     if not kyc:
+        logger.warning(f"[onboarding/v2/lookup] KYC not found for reference_id={reference_id}")
         raise HTTPException(status_code=404, detail="Onboarding session not found")
+    logger.info(f"[onboarding/v2/lookup] KYC found id={kyc.id}, status={kyc.persona_status}")
     return kyc
 
 
@@ -349,6 +352,7 @@ def _submission_email_html(kyc: models.UserKyc, ubos: list[models.UserKycUbo], d
 
 
 async def _build_compliance_attachments(urls: dict[str, str]) -> tuple[list[dict], list[str]]:
+    logger.info(f"[onboarding/v2/submit] Preparing compliance attachments for {len(urls)} document URL(s)")
     attachments: list[dict] = []
     failed_fields: list[str] = []
 
@@ -363,10 +367,14 @@ async def _build_compliance_attachments(urls: dict[str, str]) -> tuple[list[dict
                     "content": base64.b64encode(file_bytes).decode("ascii"),
                 }
             )
+            logger.info(f"[onboarding/v2/submit] Prepared attachment for field={field_name}, filename={attachment_name}")
         except Exception as exc:
             logger.error(f"[onboarding/v2/submit] Failed to prepare attachment for {field_name}: {exc}")
             failed_fields.append(field_name)
 
+    logger.info(
+        f"[onboarding/v2/submit] Attachment preparation complete: prepared={len(attachments)}, failed={len(failed_fields)}"
+    )
     return attachments, failed_fields
 
 
@@ -850,6 +858,7 @@ async def get_onboarding_status(reference_id: str, db: Session = Depends(get_db)
 @app.get("/api/v2/onboarding/firebase-config", response_model=FirebasePublicConfigResponse)
 async def get_v2_firebase_config():
     """Return frontend-safe Firebase web config only (no service account secrets)."""
+    logger.info("[onboarding/v2/firebase-config] Request received")
     return {
         "apiKey": settings.FIREBASE_WEB_API_KEY,
         "authDomain": settings.FIREBASE_WEB_AUTH_DOMAIN,
@@ -863,10 +872,14 @@ async def get_v2_firebase_config():
 @app.get("/api/v2/onboarding/resume/{reference_id}")
 async def get_v2_onboarding_resume(reference_id: str, db: Session = Depends(get_db)):
     """Return current onboarding state for a returning user by KYC reference ID."""
+    logger.info(f"[onboarding/v2/resume] Request received for reference_id={reference_id}")
     kyc = _get_kyc_by_reference_or_404(reference_id, db)
 
     ubos = db.query(models.UserKycUbo).filter(models.UserKycUbo.kyc_id == kyc.id).all()
     urls = _extract_kyc_document_urls(kyc)
+    logger.info(
+        f"[onboarding/v2/resume] Returning session snapshot reference_id={reference_id}, ubos={len(ubos)}, documents={len(urls)}"
+    )
 
     return {
         "reference_id": kyc.reference_id,
@@ -900,15 +913,20 @@ async def get_v2_onboarding_resume(reference_id: str, db: Session = Depends(get_
 @app.post("/api/v2/onboarding/basic-info")
 async def save_v2_basic_info(payload: V2BasicInfoRequest, db: Session = Depends(get_db)):
     """Create or update stage-1 onboarding draft and email the KYC ID for resume."""
+    logger.info(
+        f"[onboarding/v2/basic-info] Request received reference_id={payload.reference_id}, email={payload.email}"
+    )
     created = False
     if payload.reference_id:
         kyc = _get_kyc_by_reference_or_404(payload.reference_id, db)
         reference_id = payload.reference_id
+        logger.info(f"[onboarding/v2/basic-info] Updating existing draft reference_id={reference_id}")
     else:
         reference_id = f"kyc_{uuid.uuid4().hex[:12]}"
         kyc = models.UserKyc(reference_id=reference_id, persona_status="pending")
         db.add(kyc)
         created = True
+        logger.info(f"[onboarding/v2/basic-info] Created new draft reference_id={reference_id}")
 
     kyc.full_name = payload.full_name
     kyc.email = str(payload.email)
@@ -919,6 +937,7 @@ async def save_v2_basic_info(payload: V2BasicInfoRequest, db: Session = Depends(
 
     db.commit()
     db.refresh(kyc)
+    logger.info(f"[onboarding/v2/basic-info] Draft saved reference_id={reference_id}, created={created}")
 
     try:
         send_email(
@@ -929,6 +948,7 @@ async def save_v2_basic_info(payload: V2BasicInfoRequest, db: Session = Depends(
             from_email="onboarding@noreply.vaulta.digital",
             html=_kyc_reference_email_html(reference_id=reference_id, full_name=payload.full_name),
         )
+        logger.info(f"[onboarding/v2/basic-info] KYC ID email sent to {payload.email}")
     except Exception as exc:
         logger.error(f"[onboarding/v2/basic-info] Failed to send KYC ID email for {payload.email}: {exc}")
 
@@ -943,6 +963,9 @@ async def save_v2_basic_info(payload: V2BasicInfoRequest, db: Session = Depends(
 @app.post("/api/v2/onboarding/ubo")
 async def save_v2_ubo(payload: V2UboSaveRequest, db: Session = Depends(get_db)):
     """Save or update UBO details; verification remains a separate endpoint call."""
+    logger.info(
+        f"[onboarding/v2/ubo] Request received reference_id={payload.reference_id}, email={payload.email}, ubo_reference_id={payload.ubo_reference_id}"
+    )
     kyc = _get_kyc_by_reference_or_404(payload.reference_id, db)
 
     existing = None
@@ -963,6 +986,7 @@ async def save_v2_ubo(payload: V2UboSaveRequest, db: Session = Depends(get_db)):
         )
 
     if existing:
+        logger.info(f"[onboarding/v2/ubo] Updating existing UBO reference_id={existing.ubo_reference_id}")
         existing.full_name = payload.full_name
         existing.email = str(payload.email)
         existing.phone = payload.phone
@@ -987,6 +1011,11 @@ async def save_v2_ubo(payload: V2UboSaveRequest, db: Session = Depends(get_db)):
         db.add(ubo)
         db.commit()
         db.refresh(ubo)
+        logger.info(f"[onboarding/v2/ubo] Created new UBO reference_id={ubo.ubo_reference_id}")
+
+    logger.info(
+        f"[onboarding/v2/ubo] UBO saved reference_id={payload.reference_id}, ubo_reference_id={ubo.ubo_reference_id}, status={ubo.persona_status}"
+    )
 
     return {
         "message": "UBO details saved",
@@ -1001,17 +1030,25 @@ async def save_v2_ubo(payload: V2UboSaveRequest, db: Session = Depends(get_db)):
 @app.post("/api/v2/onboarding/ubo/verify")
 async def verify_v2_ubo(payload: V2UboVerifyRequest, db: Session = Depends(get_db)):
     """Verify an existing UBO using Persona inquiry data."""
+    logger.info(
+        f"[onboarding/v2/ubo/verify] Request received ubo_reference_id={payload.ubo_reference_id}, inquiry_id={payload.inquiry_id}"
+    )
     ubo = db.query(models.UserKycUbo).filter(models.UserKycUbo.ubo_reference_id == payload.ubo_reference_id).first()
     if not ubo:
+        logger.warning(f"[onboarding/v2/ubo/verify] UBO not found ubo_reference_id={payload.ubo_reference_id}")
         raise HTTPException(status_code=404, detail="UBO onboarding record not found")
 
     attrs = await _fetch_persona_inquiry_attributes(payload.inquiry_id, ubo.email, ubo.phone)
     persona_ref = attrs.get("referenceId")
     if persona_ref != ubo.ubo_reference_id:
+        logger.warning(
+            f"[onboarding/v2/ubo/verify] Persona reference mismatch expected={ubo.ubo_reference_id}, actual={persona_ref}"
+        )
         raise HTTPException(status_code=400, detail="Persona inquiry does not match this UBO")
 
     persona_status = attrs.get("status", "unknown")
     if persona_status not in ALLOWED_PERSONA_STATUSES:
+        logger.warning(f"[onboarding/v2/ubo/verify] Persona status not eligible status={persona_status}")
         raise HTTPException(
             status_code=400,
             detail=f"UBO inquiry status is '{persona_status}', expected one of {sorted(ALLOWED_PERSONA_STATUSES)}",
@@ -1022,6 +1059,9 @@ async def verify_v2_ubo(payload: V2UboVerifyRequest, db: Session = Depends(get_d
     ubo.verified_at = datetime.now()
     db.commit()
     db.refresh(ubo)
+    logger.info(
+        f"[onboarding/v2/ubo/verify] Verification saved ubo_reference_id={ubo.ubo_reference_id}, status={ubo.persona_status}"
+    )
 
     return {
         "message": "UBO verification completed",
@@ -1035,13 +1075,20 @@ async def verify_v2_ubo(payload: V2UboVerifyRequest, db: Session = Depends(get_d
 @app.post("/api/v2/onboarding/documents")
 async def save_v2_documents(payload: V2DocumentSaveRequest, db: Session = Depends(get_db)):
     """Save document URLs in stages; frontend uploads files and sends resulting URLs."""
+    logger.info(
+        f"[onboarding/v2/documents] Request received reference_id={payload.reference_id}, keys={list(payload.documents.keys()) if payload.documents else []}"
+    )
     kyc = _get_kyc_by_reference_or_404(payload.reference_id, db)
 
     if not payload.documents:
+        logger.warning(f"[onboarding/v2/documents] No document payload provided reference_id={payload.reference_id}")
         raise HTTPException(status_code=400, detail="No documents provided")
 
     invalid_fields = [field for field in payload.documents.keys() if field not in V2_ALLOWED_DOCUMENT_FIELDS]
     if invalid_fields:
+        logger.warning(
+            f"[onboarding/v2/documents] Invalid document fields reference_id={payload.reference_id}, invalid={invalid_fields}"
+        )
         raise HTTPException(status_code=400, detail=f"Invalid document fields: {', '.join(sorted(invalid_fields))}")
 
     saved_fields: list[str] = []
@@ -1055,6 +1102,9 @@ async def save_v2_documents(payload: V2DocumentSaveRequest, db: Session = Depend
     db.refresh(kyc)
 
     urls = _extract_kyc_document_urls(kyc)
+    logger.info(
+        f"[onboarding/v2/documents] Documents saved reference_id={payload.reference_id}, saved_fields={saved_fields}, total_documents={len(urls)}"
+    )
     return {
         "message": "Documents saved",
         "reference_id": payload.reference_id,
@@ -1067,6 +1117,9 @@ async def save_v2_documents(payload: V2DocumentSaveRequest, db: Session = Depend
 @app.post("/api/v2/onboarding/submit")
 async def submit_v2_onboarding(payload: V2SubmitRequest, db: Session = Depends(get_db)):
     """Finalize v2 onboarding; user gets KYC confirmation and compliance gets file attachments."""
+    logger.info(
+        f"[onboarding/v2/submit] Request received reference_id={payload.reference_id}, inquiry_id={payload.inquiry_id}"
+    )
     kyc = _get_kyc_by_reference_or_404(payload.reference_id, db)
 
     missing_basic_fields = [
@@ -1074,37 +1127,49 @@ async def submit_v2_onboarding(payload: V2SubmitRequest, db: Session = Depends(g
         if not getattr(kyc, field_name)
     ]
     if missing_basic_fields:
+        logger.warning(
+            f"[onboarding/v2/submit] Missing basic fields reference_id={payload.reference_id}, fields={missing_basic_fields}"
+        )
         raise HTTPException(
             status_code=400,
             detail=f"Missing basic information fields: {', '.join(missing_basic_fields)}",
         )
 
     if payload.inquiry_id:
+        logger.info(f"[onboarding/v2/submit] Verifying Persona inquiry inquiry_id={payload.inquiry_id}")
         attrs = await _fetch_persona_inquiry_attributes(payload.inquiry_id, kyc.email or "", kyc.phone or "")
         persona_ref = attrs.get("referenceId")
         if persona_ref != kyc.reference_id:
+            logger.warning(
+                f"[onboarding/v2/submit] Persona reference mismatch expected={kyc.reference_id}, actual={persona_ref}"
+            )
             raise HTTPException(status_code=400, detail="Persona inquiry does not match this onboarding session")
 
         persona_status = attrs.get("status", "unknown")
         if persona_status not in ALLOWED_PERSONA_STATUSES:
+            logger.warning(f"[onboarding/v2/submit] Persona status not eligible status={persona_status}")
             raise HTTPException(
                 status_code=400,
                 detail=f"Inquiry status is '{persona_status}', expected one of {sorted(ALLOWED_PERSONA_STATUSES)}",
             )
         kyc.persona_inquiry_id = payload.inquiry_id
         kyc.persona_status = persona_status
+        logger.info(f"[onboarding/v2/submit] Persona verification accepted status={persona_status}")
 
     ubos = db.query(models.UserKycUbo).filter(models.UserKycUbo.kyc_id == kyc.id).all()
     if not ubos:
+        logger.warning(f"[onboarding/v2/submit] No UBOs found reference_id={payload.reference_id}")
         raise HTTPException(status_code=400, detail="At least one UBO must be added and verified")
 
     unverified_ubos = [u for u in ubos if u.persona_status not in ALLOWED_PERSONA_STATUSES]
     if unverified_ubos:
         missing = ", ".join([u.full_name for u in unverified_ubos])
+        logger.warning(f"[onboarding/v2/submit] Unverified UBOs reference_id={payload.reference_id}, names={missing}")
         raise HTTPException(status_code=400, detail=f"These UBOs are not verified yet: {missing}")
 
     urls = _extract_kyc_document_urls(kyc)
     if not urls:
+        logger.warning(f"[onboarding/v2/submit] No documents found reference_id={payload.reference_id}")
         raise HTTPException(status_code=400, detail="At least one document URL is required before submission")
 
     kyc.verified_at = datetime.now()
@@ -1112,9 +1177,13 @@ async def submit_v2_onboarding(payload: V2SubmitRequest, db: Session = Depends(g
     existing_user = db.query(models.User).filter(models.User.email == kyc.email).first()
     if existing_user:
         existing_user.verified = True
+        logger.info(f"[onboarding/v2/submit] Existing user marked verified email={kyc.email}")
 
     db.commit()
     db.refresh(kyc)
+    logger.info(
+        f"[onboarding/v2/submit] Submission persisted reference_id={kyc.reference_id}, ubos={len(ubos)}, documents={len(urls)}"
+    )
 
     try:
         send_email(
@@ -1125,6 +1194,7 @@ async def submit_v2_onboarding(payload: V2SubmitRequest, db: Session = Depends(g
             from_email="onboarding@noreply.vaulta.digital",
             html=_kyc_reference_email_html(reference_id=kyc.reference_id, full_name=kyc.full_name),
         )
+        logger.info(f"[onboarding/v2/submit] User confirmation email sent email={kyc.email}")
     except Exception as exc:
         logger.error(f"[onboarding/v2/submit] Failed to send user confirmation email: {exc}")
 
@@ -1138,6 +1208,9 @@ async def submit_v2_onboarding(payload: V2SubmitRequest, db: Session = Depends(g
             from_email="onboarding@noreply.vaulta.digital",
             attachments=attachments if attachments else None,
             html=_submission_email_html(kyc, ubos, len(attachments), failed_fields),
+        )
+        logger.info(
+            f"[onboarding/v2/submit] Compliance email sent recipient={V2_COMPLIANCE_EMAIL}, attachments={len(attachments)}, failed_fields={failed_fields}"
         )
     except Exception as exc:
         logger.error(f"[onboarding/v2/submit] Failed to send compliance email: {exc}")
