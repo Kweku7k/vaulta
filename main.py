@@ -889,6 +889,8 @@ async def get_v2_onboarding_resume(reference_id: str, db: Session = Depends(get_
     return {
         "reference_id": kyc.reference_id,
         "status": kyc.persona_status,
+        "persona_template_id": settings.PERSONA_TEMPLATE_ID,
+        "persona_environment": settings.PERSONA_ENVIRONMENT,
         "basic_info": {
             "full_name": kyc.full_name,
             "email": kyc.email,
