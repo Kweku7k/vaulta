@@ -268,6 +268,8 @@ class FirebasePublicConfigResponse(BaseModel):
     storageBucket: Optional[str] = None
     messagingSenderId: Optional[str] = None
     appId: Optional[str] = None
+    persona_template_id: Optional[str] = None
+    persona_environment: Optional[str] = None
 
 
 class V2BasicInfoRequest(BaseModel):
@@ -866,6 +868,8 @@ async def get_v2_firebase_config():
         "storageBucket": settings.FIREBASE_STORAGE_BUCKET,
         "messagingSenderId": settings.FIREBASE_WEB_MESSAGING_SENDER_ID,
         "appId": settings.FIREBASE_WEB_APP_ID,
+        "persona_template_id": settings.PERSONA_TEMPLATE_ID,
+        "persona_environment": settings.PERSONA_ENVIRONMENT,
     }
 
 
@@ -957,6 +961,8 @@ async def save_v2_basic_info(payload: V2BasicInfoRequest, db: Session = Depends(
         "reference_id": reference_id,
         "created": created,
         "email": str(payload.email),
+        "persona_template_id": settings.PERSONA_TEMPLATE_ID,
+        "persona_environment": settings.PERSONA_ENVIRONMENT,
     }
 
 
