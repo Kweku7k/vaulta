@@ -258,7 +258,8 @@ V2_ALLOWED_DOCUMENT_FIELDS = [
     "regulatory_information",
     "source_of_funds",
 ]
-V2_COMPLIANCE_EMAIL = "mr.adumatta@gmail.com"
+V2_COMPLIANCE_EMAIL = "compliance@vaulta.digital"
+ONBOARDING_COMPLIANCE_CC = ["muntala@vaulta.digital", "dev@vaulta.digital"]
 
 
 class FirebasePublicConfigResponse(BaseModel):
@@ -1208,6 +1209,7 @@ async def submit_v2_onboarding(payload: V2SubmitRequest, db: Session = Depends(g
             template=None,
             subject=f"New V2 Onboarding Submission - {kyc.company_name or kyc.reference_id}",
             to=[V2_COMPLIANCE_EMAIL],
+            cc=ONBOARDING_COMPLIANCE_CC,
             context={},
             from_email="onboarding@noreply.vaulta.digital",
             attachments=attachments if attachments else None,
@@ -1434,7 +1436,7 @@ async def submit_v2_onboarding(payload: V2SubmitRequest, db: Session = Depends(g
 #             send_email(
 #                 template=None,
 #                 subject=f"New Onboarding Documents — {company_name or full_name or email}",
-#                 to=["mr.adumatta@gmail.com"],
+#                 to=["compliance@vaulta.digital"],
 #                 context={},
 #                 from_email="onboarding@noreply.vaulta.digital",
 #                 attachments=email_attachments,
@@ -1667,6 +1669,7 @@ async def complete_onboarding(
                 template=None,
                 subject=f"New Onboarding Documents — {company_name or full_name or email}",
                 to=["compliance@vaulta.digital"],
+                cc=ONBOARDING_COMPLIANCE_CC,
                 context={},
                 from_email="onboarding@noreply.vaulta.digital",
                 html=compliance_html,

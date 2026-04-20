@@ -18,7 +18,16 @@ def render_template(template_name: str, context: dict = {}):
         print(f"Template rendering error: {e}")
         return "<p>Error rendering template</p>"
     
-def send_email(template, subject, to, context, from_email="onboarding@noreply.vaulta.digital", attachments=None, html=None):
+def send_email(
+    template,
+    subject,
+    to,
+    context,
+    from_email="onboarding@noreply.vaulta.digital",
+    attachments=None,
+    html=None,
+    cc=None,
+):
 # def send_email(template="otp_input.html", subject="HELLO", context={"name":"Kweku", "subject":"Welcome Email"}):
     # context={"name":"Kweku", "subject":"Welcome Email"}
     print(type(context))
@@ -34,6 +43,8 @@ def send_email(template, subject, to, context, from_email="onboarding@noreply.va
         "subject": subject,
         "html": html_content,
         }
+        if cc:
+            params["cc"] = cc
         if attachments:
             params["attachments"] = attachments
         email: resend.Email = resend.Emails.send(params)
