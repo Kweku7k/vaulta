@@ -495,6 +495,128 @@ Final step. All UBOs must be verified before submitting. Accepts `multipart/form
 
 ---
 
+## 7) Onboarding (v2 Staged Flow)
+
+The v2 onboarding flow is additive and does not replace v1. Use this flow for staged saves and resume-by-KYC-ID.
+
+### Get frontend Firebase config
+
+`GET /api/v2/onboarding/firebase-config`
+
+Returns only public Firebase web config fields for frontend initialization.
+
+### Resume onboarding (returning users)
+
+`GET /api/v2/onboarding/resume/{reference_id}`
+
+Returns full current state of an onboarding session so the frontend can pre-fill all form stages.
+
+**Response** `200`
+
+```json
+{
+  "reference_id": "kyc_abc123def456",
+  "status": "pending",
+  "basic_info": {
+    "full_name": "Jane Doe",
+    "email": "jane@company.com",
+    "company_name": "Acme Ltd",
+    "phone": "+233201234567"
+  },
+  "ubos": [
+    {
+      "ubo_reference_id": "ubo_xyz789",
+      "full_name": "John Owner",
+      "email": "john@company.com",
+      "phone": "+233200000000",
+      "ownership_percentage": 60,
+      "status": "pending",
+      "verified_at": null
+    }
+  ],
+  "ubo_count": 1,
+  "ubo_verified_count": 0,
+  "documents": {
+    "certificate_of_incorporation": "https://storage.googleapis.com/.../coi.pdf"
+  },
+  "documents_uploaded": 1,
+  "verified_at": null
+}
+```
+
+### Save basic info (stage 1)
+
+`POST /api/v2/onboarding/basic-info`
+
+If `reference_id` is omitted, backend auto-generates a new KYC ID and emails it to the user.
+
+```json
+{
+  "full_name": "Jane Doe",
+  "email": "jane@company.com",
+  "company_name": "Acme Ltd",
+  "phone": "+233201234567"
+}
+```
+
+### Save UBO details (stage 2A)
+
+`POST /api/v2/onboarding/ubo`
+
+```json
+{
+  "reference_id": "kyc_abc123def456",
+  "full_name": "John Owner",
+  "email": "john@company.com",
+  "phone": "+233200000000",
+  "ownership_percentage": 60
+}
+```
+
+### Verify UBO (stage 2B)
+
+`POST /api/v2/onboarding/ubo/verify`
+
+```json
+{
+  "ubo_reference_id": "ubo_xyz789",
+  "inquiry_id": "inq_abc123"
+}
+```
+
+### Save document URLs (stage 3)
+
+`POST /api/v2/onboarding/documents`
+
+Frontend uploads to Firebase, then sends URLs in `documents`.
+
+```json
+{
+  "reference_id": "kyc_abc123def456",
+  "documents": {
+    "certificate_of_incorporation": "https://storage.googleapis.com/.../coi.pdf",
+    "source_of_funds": "https://storage.googleapis.com/.../sof.pdf"
+  }
+}
+```
+
+### Submit final onboarding
+
+`POST /api/v2/onboarding/submit`
+
+```json
+{
+  "reference_id": "kyc_abc123def456"
+}
+```
+
+On submit:
+- User receives confirmation email containing KYC ID.
+- Compliance recipient receives form summary plus binary file attachments (downloaded server-side from stored URLs).
+- Temporary compliance recipient for v2: `mr.adumatta@gmail.com`.
+
+---
+
 ## Changelog
 
 | Date | Notes |

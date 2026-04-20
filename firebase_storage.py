@@ -1,8 +1,10 @@
 import os
 import uuid
 from datetime import datetime
+from urllib.parse import urlparse
 
 import firebase_admin
+import httpx
 from firebase_admin import credentials, storage
 from fastapi import UploadFile
 
@@ -103,3 +105,21 @@ async def upload_documents(files: dict[str, UploadFile | None], folder: str = "o
     
     logger.info(f"Upload complete: {len(urls)} files uploaded")
     return urls
+
+
+async def download_file_from_url(file_url: str, timeout_seconds: float = 20.0) -> tuple[str, bytes, str]:
+    """Download a file from a public URL and return (filename, bytes, content_type)."""
+    if not file_url:
+        raise ValueError("Missing file URL")
+
+    parsed = urlparse(file_url)
+    filename = os.path.basename(parsed.path) or f"document_{uuid.uuid4().hex[:8]}"
+
+    async with httpx.AsyncClient(timeout=timeout_seconds) as client:
+        response = await client.get(file_url)
+
+    if response.status_code != 200:
+        raise ValueError(f"Failed to download file: status={response.status_code}")
+
+    content_type = response.headers.get("content-type", "application/octet-stream")
+    return filename, response.content, content_type

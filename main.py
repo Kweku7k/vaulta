@@ -1,4 +1,5 @@
 import os
+import base64
 from fastapi import FastAPI, HTTPException, Depends, Header, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, FileResponse
@@ -36,7 +37,7 @@ from redis_client import r
 from fastapi import Query, File, UploadFile, Form
 from fastapi import Request
 import inspect
-from firebase_storage import upload_documents
+from firebase_storage import upload_documents, download_file_from_url
 import httpx
 from core.config import settings
 
@@ -247,6 +248,126 @@ class UboVerifyRequest(BaseModel):
 
 
 ALLOWED_PERSONA_STATUSES = {"completed", "approved"}
+V2_ALLOWED_DOCUMENT_FIELDS = [
+    "certificate_of_incorporation",
+    "memorandum_and_articles",
+    "ubos_schedule",
+    "company_profile",
+    "id_documents",
+    "company_address_proof",
+    "regulatory_information",
+    "source_of_funds",
+]
+V2_COMPLIANCE_EMAIL = "mr.adumatta@gmail.com"
+
+
+class FirebasePublicConfigResponse(BaseModel):
+    apiKey: Optional[str] = None
+    authDomain: Optional[str] = None
+    projectId: Optional[str] = None
+    storageBucket: Optional[str] = None
+    messagingSenderId: Optional[str] = None
+    appId: Optional[str] = None
+
+
+class V2BasicInfoRequest(BaseModel):
+    reference_id: Optional[str] = None
+    full_name: str
+    email: EmailStr
+    company_name: str
+    phone: str
+
+
+class V2UboSaveRequest(BaseModel):
+    reference_id: str
+    ubo_reference_id: Optional[str] = None
+    full_name: str
+    email: EmailStr
+    phone: str
+    ownership_percentage: float = Field(..., gt=0, le=100)
+
+
+class V2UboVerifyRequest(BaseModel):
+    ubo_reference_id: str
+    inquiry_id: str
+
+
+class V2DocumentSaveRequest(BaseModel):
+    reference_id: str
+    documents: Dict[str, str]
+
+
+class V2SubmitRequest(BaseModel):
+    reference_id: str
+    inquiry_id: Optional[str] = None
+
+
+def _get_kyc_by_reference_or_404(reference_id: str, db: Session) -> models.UserKyc:
+    kyc = db.query(models.UserKyc).filter(models.UserKyc.reference_id == reference_id).first()
+    if not kyc:
+        raise HTTPException(status_code=404, detail="Onboarding session not found")
+    return kyc
+
+
+def _extract_kyc_document_urls(kyc: models.UserKyc) -> dict[str, str]:
+    return {
+        field: getattr(kyc, field)
+        for field in V2_ALLOWED_DOCUMENT_FIELDS
+        if getattr(kyc, field)
+    }
+
+
+def _kyc_reference_email_html(reference_id: str, full_name: str | None = None) -> str:
+    safe_name = full_name or "there"
+    return f"""
+<p>Hello {safe_name},</p>
+<p>Your onboarding draft has been saved successfully.</p>
+<p><strong>Your KYC ID:</strong> {reference_id}</p>
+<p>Please keep this ID safe. You can use it to resume your onboarding form at any time.</p>
+"""
+
+
+def _submission_email_html(kyc: models.UserKyc, ubos: list[models.UserKycUbo], document_count: int, failed_fields: list[str]) -> str:
+    failed_html = ""
+    if failed_fields:
+        failed_items = "".join([f"<li>{f.replace('_', ' ').title()}</li>" for f in failed_fields])
+        failed_html = f"<p><strong>Documents that failed to attach:</strong></p><ul>{failed_items}</ul>"
+
+    return f"""
+<p>A new v2 onboarding submission has been received.</p>
+<ul>
+  <li><strong>KYC ID:</strong> {kyc.reference_id}</li>
+  <li><strong>Full Name:</strong> {kyc.full_name or 'N/A'}</li>
+  <li><strong>Company Name:</strong> {kyc.company_name or 'N/A'}</li>
+  <li><strong>Email:</strong> {kyc.email or 'N/A'}</li>
+  <li><strong>Phone:</strong> {kyc.phone or 'N/A'}</li>
+  <li><strong>UBO Count:</strong> {len(ubos)}</li>
+  <li><strong>Attached Documents:</strong> {document_count}</li>
+</ul>
+{failed_html}
+"""
+
+
+async def _build_compliance_attachments(urls: dict[str, str]) -> tuple[list[dict], list[str]]:
+    attachments: list[dict] = []
+    failed_fields: list[str] = []
+
+    for field_name, file_url in urls.items():
+        try:
+            remote_filename, file_bytes, _ = await download_file_from_url(file_url)
+            ext = os.path.splitext(remote_filename)[1] or ".bin"
+            attachment_name = f"{field_name}{ext}"
+            attachments.append(
+                {
+                    "filename": attachment_name,
+                    "content": base64.b64encode(file_bytes).decode("ascii"),
+                }
+            )
+        except Exception as exc:
+            logger.error(f"[onboarding/v2/submit] Failed to prepare attachment for {field_name}: {exc}")
+            failed_fields.append(field_name)
+
+    return attachments, failed_fields
 
 
 def _is_user_verified_for_login(user: models.User) -> bool:
@@ -723,6 +844,312 @@ async def get_onboarding_status(reference_id: str, db: Session = Depends(get_db)
             }
             for u in ubos
         ],
+    }
+
+
+@app.get("/api/v2/onboarding/firebase-config", response_model=FirebasePublicConfigResponse)
+async def get_v2_firebase_config():
+    """Return frontend-safe Firebase web config only (no service account secrets)."""
+    return {
+        "apiKey": settings.FIREBASE_WEB_API_KEY,
+        "authDomain": settings.FIREBASE_WEB_AUTH_DOMAIN,
+        "projectId": settings.FIREBASE_WEB_PROJECT_ID,
+        "storageBucket": settings.FIREBASE_STORAGE_BUCKET,
+        "messagingSenderId": settings.FIREBASE_WEB_MESSAGING_SENDER_ID,
+        "appId": settings.FIREBASE_WEB_APP_ID,
+    }
+
+
+@app.get("/api/v2/onboarding/resume/{reference_id}")
+async def get_v2_onboarding_resume(reference_id: str, db: Session = Depends(get_db)):
+    """Return current onboarding state for a returning user by KYC reference ID."""
+    kyc = _get_kyc_by_reference_or_404(reference_id, db)
+
+    ubos = db.query(models.UserKycUbo).filter(models.UserKycUbo.kyc_id == kyc.id).all()
+    urls = _extract_kyc_document_urls(kyc)
+
+    return {
+        "reference_id": kyc.reference_id,
+        "status": kyc.persona_status,
+        "basic_info": {
+            "full_name": kyc.full_name,
+            "email": kyc.email,
+            "company_name": kyc.company_name,
+            "phone": kyc.phone,
+        },
+        "ubos": [
+            {
+                "ubo_reference_id": u.ubo_reference_id,
+                "full_name": u.full_name,
+                "email": u.email,
+                "phone": u.phone,
+                "ownership_percentage": u.ownership_percentage,
+                "status": u.persona_status,
+                "verified_at": u.verified_at.isoformat() if u.verified_at else None,
+            }
+            for u in ubos
+        ],
+        "ubo_count": len(ubos),
+        "ubo_verified_count": len([u for u in ubos if u.persona_status in ALLOWED_PERSONA_STATUSES]),
+        "documents": urls,
+        "documents_uploaded": len(urls),
+        "verified_at": kyc.verified_at.isoformat() if kyc.verified_at else None,
+    }
+
+
+@app.post("/api/v2/onboarding/basic-info")
+async def save_v2_basic_info(payload: V2BasicInfoRequest, db: Session = Depends(get_db)):
+    """Create or update stage-1 onboarding draft and email the KYC ID for resume."""
+    created = False
+    if payload.reference_id:
+        kyc = _get_kyc_by_reference_or_404(payload.reference_id, db)
+        reference_id = payload.reference_id
+    else:
+        reference_id = f"kyc_{uuid.uuid4().hex[:12]}"
+        kyc = models.UserKyc(reference_id=reference_id, persona_status="pending")
+        db.add(kyc)
+        created = True
+
+    kyc.full_name = payload.full_name
+    kyc.email = str(payload.email)
+    kyc.company_name = payload.company_name
+    kyc.phone = payload.phone
+    if not kyc.persona_status:
+        kyc.persona_status = "pending"
+
+    db.commit()
+    db.refresh(kyc)
+
+    try:
+        send_email(
+            template=None,
+            subject=f"Your Vaulta KYC ID - {reference_id}",
+            to=[str(payload.email)],
+            context={},
+            from_email="onboarding@noreply.vaulta.digital",
+            html=_kyc_reference_email_html(reference_id=reference_id, full_name=payload.full_name),
+        )
+    except Exception as exc:
+        logger.error(f"[onboarding/v2/basic-info] Failed to send KYC ID email for {payload.email}: {exc}")
+
+    return {
+        "message": "Basic information saved",
+        "reference_id": reference_id,
+        "created": created,
+        "email": str(payload.email),
+    }
+
+
+@app.post("/api/v2/onboarding/ubo")
+async def save_v2_ubo(payload: V2UboSaveRequest, db: Session = Depends(get_db)):
+    """Save or update UBO details; verification remains a separate endpoint call."""
+    kyc = _get_kyc_by_reference_or_404(payload.reference_id, db)
+
+    existing = None
+    if payload.ubo_reference_id:
+        existing = (
+            db.query(models.UserKycUbo)
+            .filter(
+                models.UserKycUbo.kyc_id == kyc.id,
+                models.UserKycUbo.ubo_reference_id == payload.ubo_reference_id,
+            )
+            .first()
+        )
+    if not existing:
+        existing = (
+            db.query(models.UserKycUbo)
+            .filter(models.UserKycUbo.kyc_id == kyc.id, models.UserKycUbo.email == str(payload.email))
+            .first()
+        )
+
+    if existing:
+        existing.full_name = payload.full_name
+        existing.email = str(payload.email)
+        existing.phone = payload.phone
+        existing.ownership_percentage = payload.ownership_percentage
+        if existing.persona_status not in ALLOWED_PERSONA_STATUSES:
+            existing.persona_status = "pending"
+            existing.persona_inquiry_id = None
+            existing.verified_at = None
+        db.commit()
+        db.refresh(existing)
+        ubo = existing
+    else:
+        ubo = models.UserKycUbo(
+            kyc_id=kyc.id,
+            ubo_reference_id=f"ubo_{uuid.uuid4().hex[:12]}",
+            full_name=payload.full_name,
+            email=str(payload.email),
+            phone=payload.phone,
+            ownership_percentage=payload.ownership_percentage,
+            persona_status="pending",
+        )
+        db.add(ubo)
+        db.commit()
+        db.refresh(ubo)
+
+    return {
+        "message": "UBO details saved",
+        "reference_id": payload.reference_id,
+        "ubo_reference_id": ubo.ubo_reference_id,
+        "persona_template_id": settings.PERSONA_TEMPLATE_ID,
+        "persona_environment": settings.PERSONA_ENVIRONMENT,
+        "status": ubo.persona_status,
+    }
+
+
+@app.post("/api/v2/onboarding/ubo/verify")
+async def verify_v2_ubo(payload: V2UboVerifyRequest, db: Session = Depends(get_db)):
+    """Verify an existing UBO using Persona inquiry data."""
+    ubo = db.query(models.UserKycUbo).filter(models.UserKycUbo.ubo_reference_id == payload.ubo_reference_id).first()
+    if not ubo:
+        raise HTTPException(status_code=404, detail="UBO onboarding record not found")
+
+    attrs = await _fetch_persona_inquiry_attributes(payload.inquiry_id, ubo.email, ubo.phone)
+    persona_ref = attrs.get("referenceId")
+    if persona_ref != ubo.ubo_reference_id:
+        raise HTTPException(status_code=400, detail="Persona inquiry does not match this UBO")
+
+    persona_status = attrs.get("status", "unknown")
+    if persona_status not in ALLOWED_PERSONA_STATUSES:
+        raise HTTPException(
+            status_code=400,
+            detail=f"UBO inquiry status is '{persona_status}', expected one of {sorted(ALLOWED_PERSONA_STATUSES)}",
+        )
+
+    ubo.persona_inquiry_id = payload.inquiry_id
+    ubo.persona_status = persona_status
+    ubo.verified_at = datetime.now()
+    db.commit()
+    db.refresh(ubo)
+
+    return {
+        "message": "UBO verification completed",
+        "ubo_reference_id": ubo.ubo_reference_id,
+        "status": ubo.persona_status,
+        "persona_inquiry_id": ubo.persona_inquiry_id,
+        "verified_at": ubo.verified_at.isoformat() if ubo.verified_at else None,
+    }
+
+
+@app.post("/api/v2/onboarding/documents")
+async def save_v2_documents(payload: V2DocumentSaveRequest, db: Session = Depends(get_db)):
+    """Save document URLs in stages; frontend uploads files and sends resulting URLs."""
+    kyc = _get_kyc_by_reference_or_404(payload.reference_id, db)
+
+    if not payload.documents:
+        raise HTTPException(status_code=400, detail="No documents provided")
+
+    invalid_fields = [field for field in payload.documents.keys() if field not in V2_ALLOWED_DOCUMENT_FIELDS]
+    if invalid_fields:
+        raise HTTPException(status_code=400, detail=f"Invalid document fields: {', '.join(sorted(invalid_fields))}")
+
+    saved_fields: list[str] = []
+    for field, url in payload.documents.items():
+        if not url:
+            continue
+        setattr(kyc, field, url)
+        saved_fields.append(field)
+
+    db.commit()
+    db.refresh(kyc)
+
+    urls = _extract_kyc_document_urls(kyc)
+    return {
+        "message": "Documents saved",
+        "reference_id": payload.reference_id,
+        "saved_fields": saved_fields,
+        "documents_uploaded": len(urls),
+        "documents": urls,
+    }
+
+
+@app.post("/api/v2/onboarding/submit")
+async def submit_v2_onboarding(payload: V2SubmitRequest, db: Session = Depends(get_db)):
+    """Finalize v2 onboarding; user gets KYC confirmation and compliance gets file attachments."""
+    kyc = _get_kyc_by_reference_or_404(payload.reference_id, db)
+
+    missing_basic_fields = [
+        field_name for field_name in ["full_name", "company_name", "email", "phone"]
+        if not getattr(kyc, field_name)
+    ]
+    if missing_basic_fields:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Missing basic information fields: {', '.join(missing_basic_fields)}",
+        )
+
+    if payload.inquiry_id:
+        attrs = await _fetch_persona_inquiry_attributes(payload.inquiry_id, kyc.email or "", kyc.phone or "")
+        persona_ref = attrs.get("referenceId")
+        if persona_ref != kyc.reference_id:
+            raise HTTPException(status_code=400, detail="Persona inquiry does not match this onboarding session")
+
+        persona_status = attrs.get("status", "unknown")
+        if persona_status not in ALLOWED_PERSONA_STATUSES:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Inquiry status is '{persona_status}', expected one of {sorted(ALLOWED_PERSONA_STATUSES)}",
+            )
+        kyc.persona_inquiry_id = payload.inquiry_id
+        kyc.persona_status = persona_status
+
+    ubos = db.query(models.UserKycUbo).filter(models.UserKycUbo.kyc_id == kyc.id).all()
+    if not ubos:
+        raise HTTPException(status_code=400, detail="At least one UBO must be added and verified")
+
+    unverified_ubos = [u for u in ubos if u.persona_status not in ALLOWED_PERSONA_STATUSES]
+    if unverified_ubos:
+        missing = ", ".join([u.full_name for u in unverified_ubos])
+        raise HTTPException(status_code=400, detail=f"These UBOs are not verified yet: {missing}")
+
+    urls = _extract_kyc_document_urls(kyc)
+    if not urls:
+        raise HTTPException(status_code=400, detail="At least one document URL is required before submission")
+
+    kyc.verified_at = datetime.now()
+
+    existing_user = db.query(models.User).filter(models.User.email == kyc.email).first()
+    if existing_user:
+        existing_user.verified = True
+
+    db.commit()
+    db.refresh(kyc)
+
+    try:
+        send_email(
+            template=None,
+            subject=f"Onboarding submission received - {kyc.reference_id}",
+            to=[kyc.email],
+            context={},
+            from_email="onboarding@noreply.vaulta.digital",
+            html=_kyc_reference_email_html(reference_id=kyc.reference_id, full_name=kyc.full_name),
+        )
+    except Exception as exc:
+        logger.error(f"[onboarding/v2/submit] Failed to send user confirmation email: {exc}")
+
+    attachments, failed_fields = await _build_compliance_attachments(urls)
+    try:
+        send_email(
+            template=None,
+            subject=f"New V2 Onboarding Submission - {kyc.company_name or kyc.reference_id}",
+            to=[V2_COMPLIANCE_EMAIL],
+            context={},
+            from_email="onboarding@noreply.vaulta.digital",
+            attachments=attachments if attachments else None,
+            html=_submission_email_html(kyc, ubos, len(attachments), failed_fields),
+        )
+    except Exception as exc:
+        logger.error(f"[onboarding/v2/submit] Failed to send compliance email: {exc}")
+
+    return {
+        "message": "Onboarding submitted successfully",
+        "reference_id": kyc.reference_id,
+        "email": kyc.email,
+        "documents_uploaded": len(urls),
+        "attachments_sent": len(attachments),
+        "attachment_failures": failed_fields,
+        "compliance_recipient": V2_COMPLIANCE_EMAIL,
     }
 
 

@@ -29,6 +29,11 @@ class Settings(BaseSettings):
     # Firebase
     FIREBASE_STORAGE_BUCKET: Optional[str] = None
     FIREBASE_CREDENTIALS_PATH: Optional[str] = None
+    FIREBASE_WEB_API_KEY: Optional[str] = None
+    FIREBASE_WEB_AUTH_DOMAIN: Optional[str] = None
+    FIREBASE_WEB_PROJECT_ID: Optional[str] = None
+    FIREBASE_WEB_MESSAGING_SENDER_ID: Optional[str] = None
+    FIREBASE_WEB_APP_ID: Optional[str] = None
 
     # Persona
     PERSONA_API_KEY: Optional[str] = None
