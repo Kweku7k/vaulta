@@ -296,7 +296,8 @@ class V2UboVerifyRequest(BaseModel):
 
 class V2DocumentSaveRequest(BaseModel):
     reference_id: str
-    documents: Dict[str, str]
+    field: str
+    url: str
 
 
 class V2SubmitRequest(BaseModel):
@@ -1080,41 +1081,36 @@ async def verify_v2_ubo(payload: V2UboVerifyRequest, db: Session = Depends(get_d
 
 @app.post("/api/v2/onboarding/documents")
 async def save_v2_documents(payload: V2DocumentSaveRequest, db: Session = Depends(get_db)):
-    """Save document URLs in stages; frontend uploads files and sends resulting URLs."""
+    """Save a single document URL; call once per document field."""
     logger.info(
-        f"[onboarding/v2/documents] Request received reference_id={payload.reference_id}, keys={list(payload.documents.keys()) if payload.documents else []}"
+        f"[onboarding/v2/documents] Request received reference_id={payload.reference_id}, field={payload.field}"
     )
     kyc = _get_kyc_by_reference_or_404(payload.reference_id, db)
 
-    if not payload.documents:
-        logger.warning(f"[onboarding/v2/documents] No document payload provided reference_id={payload.reference_id}")
-        raise HTTPException(status_code=400, detail="No documents provided")
-
-    invalid_fields = [field for field in payload.documents.keys() if field not in V2_ALLOWED_DOCUMENT_FIELDS]
-    if invalid_fields:
+    if payload.field not in V2_ALLOWED_DOCUMENT_FIELDS:
         logger.warning(
-            f"[onboarding/v2/documents] Invalid document fields reference_id={payload.reference_id}, invalid={invalid_fields}"
+            f"[onboarding/v2/documents] Invalid document field reference_id={payload.reference_id}, field={payload.field}"
         )
-        raise HTTPException(status_code=400, detail=f"Invalid document fields: {', '.join(sorted(invalid_fields))}")
+        raise HTTPException(
+            status_code=400,
+            detail=f"Invalid document field '{payload.field}'. Allowed: {', '.join(V2_ALLOWED_DOCUMENT_FIELDS)}",
+        )
 
-    saved_fields: list[str] = []
-    for field, url in payload.documents.items():
-        if not url:
-            continue
-        setattr(kyc, field, url)
-        saved_fields.append(field)
+    if not payload.url:
+        raise HTTPException(status_code=400, detail="url must not be empty")
 
+    setattr(kyc, payload.field, payload.url)
     db.commit()
     db.refresh(kyc)
 
     urls = _extract_kyc_document_urls(kyc)
     logger.info(
-        f"[onboarding/v2/documents] Documents saved reference_id={payload.reference_id}, saved_fields={saved_fields}, total_documents={len(urls)}"
+        f"[onboarding/v2/documents] Document saved reference_id={payload.reference_id}, field={payload.field}, total_documents={len(urls)}"
     )
     return {
-        "message": "Documents saved",
+        "message": "Document saved",
         "reference_id": payload.reference_id,
-        "saved_fields": saved_fields,
+        "saved_field": payload.field,
         "documents_uploaded": len(urls),
         "documents": urls,
     }

@@ -588,14 +588,35 @@ If `reference_id` is omitted, backend auto-generates a new KYC ID and emails it 
 
 `POST /api/v2/onboarding/documents`
 
-Frontend uploads to Firebase, then sends URLs in `documents`.
+Save one document URL per call. Upload the file to Firebase first, then send the resulting URL. Call this endpoint once for each document.
 
 ```json
 {
   "reference_id": "kyc_abc123def456",
+  "field": "certificate_of_incorporation",
+  "url": "https://storage.googleapis.com/.../coi.pdf"
+}
+```
+
+Allowed `field` values:
+- `certificate_of_incorporation`
+- `memorandum_and_articles`
+- `ubos_schedule`
+- `company_profile`
+- `id_documents`
+- `company_address_proof`
+- `regulatory_information`
+- `source_of_funds`
+
+**Response:**
+```json
+{
+  "message": "Document saved",
+  "reference_id": "kyc_abc123def456",
+  "saved_field": "certificate_of_incorporation",
+  "documents_uploaded": 1,
   "documents": {
-    "certificate_of_incorporation": "https://storage.googleapis.com/.../coi.pdf",
-    "source_of_funds": "https://storage.googleapis.com/.../sof.pdf"
+    "certificate_of_incorporation": "https://storage.googleapis.com/.../coi.pdf"
   }
 }
 ```
