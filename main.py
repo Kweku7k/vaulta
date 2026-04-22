@@ -360,10 +360,7 @@ async def _notify_saved_document_to_slack(
                 field,
                 slack_resp,
             )
-            send_slack_message(
-                "onboarding",
-                f"⚠️ Document saved but Slack file upload failed.\n{base_message}\nFilename: {filename}",
-            )
+            send_slack_message("onboarding", f"{base_message}\nURL: {file_url}")
         else:
             logger.info(
                 "[onboarding/v2/documents] Slack file uploaded reference_id=%s field=%s filename=%s",
@@ -378,10 +375,7 @@ async def _notify_saved_document_to_slack(
             field,
             exc,
         )
-        send_slack_message(
-            "onboarding",
-            f"⚠️ Document saved but backend could not fetch/upload file to Slack.\n{base_message}",
-        )
+        send_slack_message("onboarding", f"{base_message}\nURL: {file_url}")
 
 
 def _kyc_reference_email_html(reference_id: str, full_name: str | None = None) -> str:
