@@ -324,6 +324,57 @@ def _extract_kyc_document_urls(kyc: models.UserKyc) -> dict[str, str]:
     }
 
 
+async def _notify_saved_document_to_slack(
+    *,
+    kyc: models.UserKyc,
+    reference_id: str,
+    field: str,
+    file_url: str,
+):
+    """Best-effort Slack notification for a newly saved onboarding document."""
+    base_message = (
+        "📄 Onboarding document saved\n"
+        f"Reference ID: {reference_id}\n"
+        f"Field: {field}\n"
+        f"Company: {kyc.company_name or 'N/A'}\n"
+        f"Full Name: {kyc.full_name or 'N/A'}\n"
+        f"Email: {kyc.email or 'N/A'}"
+    )
+
+    try:
+        filename, file_bytes, content_type = await download_file_from_url(file_url)
+        slack_resp = send_slack_file(
+            channel="onboarding",
+            filename=filename,
+            content=file_bytes,
+            content_type=content_type,
+            initial_comment=f"{base_message}\nFilename: {filename}",
+        )
+        if not slack_resp or not slack_resp.get("ok"):
+            logger.warning(
+                "[onboarding/v2/documents] Slack file upload failed reference_id=%s field=%s error=%s",
+                reference_id,
+                field,
+                slack_resp,
+            )
+            send_slack_message("onboarding", f"{base_message}\nURL: {file_url}")
+        else:
+            logger.info(
+                "[onboarding/v2/documents] Slack file uploaded reference_id=%s field=%s filename=%s",
+                reference_id,
+                field,
+                filename,
+            )
+    except Exception as exc:
+        logger.warning(
+            "[onboarding/v2/documents] Slack notify fallback to message reference_id=%s field=%s error=%s",
+            reference_id,
+            field,
+            exc,
+        )
+        send_slack_message("onboarding", f"{base_message}\nURL: {file_url}")
+
+
 def _kyc_reference_email_html(reference_id: str, full_name: str | None = None) -> str:
     safe_name = full_name or "there"
     return f"""
@@ -1110,6 +1161,20 @@ async def save_v2_documents(payload: V2DocumentSaveRequest, db: Session = Depend
     logger.info(
         f"[onboarding/v2/documents] Document saved reference_id={payload.reference_id}, field={payload.field}, total_documents={len(urls)}"
     )
+
+    # Slack notification is non-fatal and should not block successful saves.
+    try:
+        await _notify_saved_document_to_slack(
+            kyc=kyc,
+            reference_id=payload.reference_id,
+            field=payload.field,
+            file_url=payload.url,
+        )
+    except Exception as e:
+        logger.warning(
+            f"[onboarding/v2/documents] Slack notification failed reference_id={payload.reference_id}, field={payload.field}, error={e}"
+        )
+
     return {
         "message": "Document saved",
         "reference_id": payload.reference_id,
