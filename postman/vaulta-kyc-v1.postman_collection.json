@@ -1,0 +1,262 @@
+{
+  "info": {
+    "name": "Vaulta KYC v1 APIs",
+    "_postman_id": "8b8a8f6e-9e72-4f2d-8f88-3f6a4e9f4f42",
+    "description": "Postman collection for KYC retrieval and admin compliance submission endpoints.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "item": [
+    {
+      "name": "KYC - List My Entries",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{jwt_token}}",
+            "type": "text"
+          }
+        ],
+        "url": {
+          "raw": "{{base_url}}/api/v1/kyc",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "api",
+            "v1",
+            "kyc"
+          ]
+        }
+      },
+      "response": []
+    },
+    {
+      "name": "KYC - Get By Reference",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{jwt_token}}",
+            "type": "text"
+          }
+        ],
+        "url": {
+          "raw": "{{base_url}}/api/v1/kyc/{{reference_id}}",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "api",
+            "v1",
+            "kyc",
+            "{{reference_id}}"
+          ]
+        }
+      },
+      "response": []
+    },
+    {
+      "name": "Admin - List KYC Entries",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{jwt_token}}",
+            "type": "text"
+          }
+        ],
+        "url": {
+          "raw": "{{base_url}}/api/v1/admin/kyc?page={{page}}&page_size={{page_size}}&persona_status={{persona_status}}&email={{email_filter}}&reference_id={{reference_filter}}",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "api",
+            "v1",
+            "admin",
+            "kyc"
+          ],
+          "query": [
+            {
+              "key": "page",
+              "value": "{{page}}"
+            },
+            {
+              "key": "page_size",
+              "value": "{{page_size}}"
+            },
+            {
+              "key": "persona_status",
+              "value": "{{persona_status}}"
+            },
+            {
+              "key": "email",
+              "value": "{{email_filter}}"
+            },
+            {
+              "key": "reference_id",
+              "value": "{{reference_filter}}"
+            }
+          ]
+        }
+      },
+      "response": []
+    },
+    {
+      "name": "Admin - Send KYC To Compliance",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{jwt_token}}",
+            "type": "text"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json",
+            "type": "text"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"reference_id\": \"{{reference_id}}\",\n  \"inquiry_id\": \"{{inquiry_id}}\"\n}"
+        },
+        "url": {
+          "raw": "{{base_url}}/api/v1/admin/kyc/send-to-compliance",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "api",
+            "v1",
+            "admin",
+            "kyc",
+            "send-to-compliance"
+          ]
+        }
+      },
+      "response": []
+    },
+    {
+      "name": "Admin - Review KYC Document",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{jwt_token}}",
+            "type": "text"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json",
+            "type": "text"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"document_field\": \"{{document_field}}\",\n  \"status\": \"{{review_status}}\",\n  \"reason\": \"{{review_reason}}\"\n}"
+        },
+        "url": {
+          "raw": "{{base_url}}/api/v1/admin/kyc/{{reference_id}}/documents/review",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "api",
+            "v1",
+            "admin",
+            "kyc",
+            "{{reference_id}}",
+            "documents",
+            "review"
+          ]
+        }
+      },
+      "response": []
+    },
+    {
+      "name": "Admin - Get KYC Document Review Status",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{jwt_token}}",
+            "type": "text"
+          }
+        ],
+        "url": {
+          "raw": "{{base_url}}/api/v1/admin/kyc/{{reference_id}}/documents/review-status",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "api",
+            "v1",
+            "admin",
+            "kyc",
+            "{{reference_id}}",
+            "documents",
+            "review-status"
+          ]
+        }
+      },
+      "response": []
+    }
+  ],
+  "variable": [
+    {
+      "key": "base_url",
+      "value": "http://localhost:8000"
+    },
+    {
+      "key": "jwt_token",
+      "value": ""
+    },
+    {
+      "key": "reference_id",
+      "value": ""
+    },
+    {
+      "key": "inquiry_id",
+      "value": ""
+    },
+    {
+      "key": "page",
+      "value": "1"
+    },
+    {
+      "key": "page_size",
+      "value": "20"
+    },
+    {
+      "key": "persona_status",
+      "value": ""
+    },
+    {
+      "key": "email_filter",
+      "value": ""
+    },
+    {
+      "key": "reference_filter",
+      "value": ""
+    },
+    {
+      "key": "document_field",
+      "value": "id_documents"
+    },
+    {
+      "key": "review_status",
+      "value": "approved"
+    },
+    {
+      "key": "review_reason",
+      "value": ""
+    }
+  ]
+}

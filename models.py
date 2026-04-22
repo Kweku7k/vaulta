@@ -1,4 +1,4 @@
-from sqlalchemy import Boolean, Column, ForeignKey, Integer, String, DateTime, Float
+from sqlalchemy import Boolean, Column, ForeignKey, Integer, String, DateTime, Float, UniqueConstraint
 from sqlalchemy.sql import func
 from database import Base
     
@@ -164,4 +164,22 @@ class UserKycUbo(Base):
     verified_at = Column(DateTime(timezone=True), nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
+
+
+class UserKycDocumentReview(Base):
+    __tablename__ = "user_kyc_document_reviews"
+
+    id = Column(Integer, primary_key=True, index=True)
+    kyc_id = Column(Integer, ForeignKey("user_kyc.id"), index=True, nullable=False)
+    document_field = Column(String, nullable=False)
+    status = Column(String, nullable=False)
+    reason = Column(String, nullable=True)
+    reviewed_by = Column(String, ForeignKey("users.id"), nullable=True)
+    reviewed_at = Column(DateTime(timezone=True), nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), onupdate=func.now())
+
+    __table_args__ = (
+        UniqueConstraint("kyc_id", "document_field", name="uq_kyc_document_review_kyc_field"),
+    )
 

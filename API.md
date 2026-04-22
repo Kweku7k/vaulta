@@ -205,7 +205,243 @@ Soft-deletes the account (`status → DELETED`). Returns remaining active accoun
 
 ---
 
-## 3) Payments
+## 3) KYC
+
+KYC endpoints follow the same authenticated pattern as Accounts. User routes are owner-scoped; admin routes require `role=admin`.
+
+### List my KYC entries
+
+`GET /api/v1/kyc`
+
+Returns KYC entries linked to the authenticated user.
+
+**Response** `200`
+
+```json
+[
+  {
+    "reference_id": "kyc_a1b2c3d4e5f6",
+    "full_name": "Jane Doe",
+    "company_name": "Acme Ltd",
+    "email": "jane@acme.com",
+    "phone": "+233200000000",
+    "persona_status": "pending",
+    "persona_inquiry_id": null,
+    "verified_at": null,
+    "documents_uploaded": 5,
+    "ubo_count": 2,
+    "ubo_verified_count": 1
+  }
+]
+```
+
+---
+
+### Get one KYC entry
+
+`GET /api/v1/kyc/{reference_id}`
+
+Accessible by the owner of the KYC record or an admin user.
+
+**Response** `200`
+
+```json
+{
+  "reference_id": "kyc_a1b2c3d4e5f6",
+  "status": "approved",
+  "persona_inquiry_id": "inq_123",
+  "user_id": "usr_abc",
+  "verified_at": "2026-04-22T09:30:12",
+  "basic_info": {
+    "full_name": "Jane Doe",
+    "email": "jane@acme.com",
+    "company_name": "Acme Ltd",
+    "phone": "+233200000000"
+  },
+  "ubos": [
+    {
+      "ubo_reference_id": "ubo_001",
+      "full_name": "John Owner",
+      "email": "john@acme.com",
+      "phone": "+233200000001",
+      "ownership_percentage": 60.0,
+      "status": "approved",
+      "persona_inquiry_id": "inq_ubo_1",
+      "verified_at": "2026-04-21T15:22:00"
+    }
+  ],
+  "ubo_count": 1,
+  "ubo_verified_count": 1,
+  "documents": {
+    "certificate_of_incorporation": "https://storage.example.com/file1.pdf",
+    "id_documents": "https://storage.example.com/file2.pdf"
+  },
+  "documents_uploaded": 2,
+  "review_statuses": {
+    "certificate_of_incorporation": {
+      "document_field": "certificate_of_incorporation",
+      "status": "approved",
+      "reason": null,
+      "reviewed_by": "admin_user_id",
+      "reviewed_at": "2026-04-22T10:10:00"
+    },
+    "id_documents": {
+      "document_field": "id_documents",
+      "status": "declined",
+      "reason": "Document is blurry",
+      "reviewed_by": "admin_user_id",
+      "reviewed_at": "2026-04-22T10:11:00"
+    }
+  }
+}
+```
+
+---
+
+### Admin list KYC entries
+
+`GET /api/v1/admin/kyc`
+
+Query params:
+- `page` (default `1`)
+- `page_size` (default `20`, max `100`)
+- `persona_status` (optional exact match)
+- `email` (optional contains match)
+- `reference_id` (optional contains match)
+
+**Response** `200`
+
+```json
+{
+  "items": [
+    {
+      "reference_id": "kyc_a1b2c3d4e5f6",
+      "full_name": "Jane Doe",
+      "company_name": "Acme Ltd",
+      "email": "jane@acme.com",
+      "phone": "+233200000000",
+      "persona_status": "approved",
+      "persona_inquiry_id": "inq_123",
+      "verified_at": "2026-04-22T09:30:12",
+      "documents_uploaded": 8,
+      "ubo_count": 2,
+      "ubo_verified_count": 2
+    }
+  ],
+  "total": 43,
+  "page": 1,
+  "page_size": 20,
+  "has_next": true
+}
+```
+
+---
+
+### Admin send KYC to compliance
+
+`POST /api/v1/admin/kyc/send-to-compliance`
+
+```json
+{
+  "reference_id": "kyc_a1b2c3d4e5f6",
+  "inquiry_id": "inq_123"
+}
+```
+
+`inquiry_id` is optional and used when forcing Persona verification in the submission flow.
+
+**Response** `200`
+
+```json
+{
+  "message": "Onboarding submitted successfully",
+  "reference_id": "kyc_a1b2c3d4e5f6",
+  "email": "jane@acme.com",
+  "documents_uploaded": 5,
+  "attachments_sent": 5,
+  "attachment_failures": [],
+  "compliance_recipient": "compliance@vaulta.digital"
+}
+```
+
+---
+
+### Admin review single KYC document
+
+`POST /api/v1/admin/kyc/{reference_id}/documents/review`
+
+```json
+{
+  "document_field": "id_documents",
+  "status": "declined",
+  "reason": "Document is blurry"
+}
+```
+
+Allowed `status` values:
+- `approved`
+- `declined`
+
+Allowed `document_field` values:
+- `certificate_of_incorporation`
+- `memorandum_and_articles`
+- `ubos_schedule`
+- `company_profile`
+- `id_documents`
+- `company_address_proof`
+- `regulatory_information`
+- `source_of_funds`
+
+If the status is `declined`, the user is notified by email to re-upload the declined document(s).
+
+**Response** `200`
+
+```json
+{
+  "reference_id": "kyc_a1b2c3d4e5f6",
+  "document_field": "id_documents",
+  "status": "declined",
+  "reason": "Document is blurry",
+  "reviewed_by": "admin_user_id",
+  "reviewed_at": "2026-04-22T10:11:00"
+}
+```
+
+---
+
+### Admin get KYC document review statuses
+
+`GET /api/v1/admin/kyc/{reference_id}/documents/review-status`
+
+Returns latest review status per uploaded document. If a document is uploaded but never reviewed, status is `pending`.
+
+**Response** `200`
+
+```json
+{
+  "reference_id": "kyc_a1b2c3d4e5f6",
+  "review_statuses": {
+    "certificate_of_incorporation": {
+      "document_field": "certificate_of_incorporation",
+      "status": "approved",
+      "reason": null,
+      "reviewed_by": "admin_user_id",
+      "reviewed_at": "2026-04-22T10:10:00"
+    },
+    "id_documents": {
+      "document_field": "id_documents",
+      "status": "pending",
+      "reason": null,
+      "reviewed_by": null,
+      "reviewed_at": null
+    }
+  }
+}
+```
+
+---
+
+## 4) Payments
 
 Outgoing transfers (e.g. USDC on-chain). Payments start as `pending` and require admin approval before execution.
 

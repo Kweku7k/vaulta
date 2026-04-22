@@ -306,6 +306,10 @@ class V2SubmitRequest(BaseModel):
     inquiry_id: Optional[str] = None
 
 
+class V2SendDocumentsRequest(BaseModel):
+    reference_id: str
+
+
 def _get_kyc_by_reference_or_404(reference_id: str, db: Session) -> models.UserKyc:
     logger.info(f"[onboarding/v2/lookup] Looking up KYC by reference_id={reference_id}")
     kyc = db.query(models.UserKyc).filter(models.UserKyc.reference_id == reference_id).first()
@@ -1184,6 +1188,53 @@ async def save_v2_documents(payload: V2DocumentSaveRequest, db: Session = Depend
         "saved_field": payload.field,
         "documents_uploaded": len(urls),
         "documents": urls,
+    }
+
+
+@app.post("/api/v2/onboarding/send-documents")
+async def send_v2_documents(payload: V2SendDocumentsRequest, db: Session = Depends(get_db)):
+    """Send already-saved document URLs to compliance without requiring full onboarding submission."""
+    logger.info(f"[onboarding/v2/send-documents] Request received reference_id={payload.reference_id}")
+    kyc = _get_kyc_by_reference_or_404(payload.reference_id, db)
+
+    urls = _extract_kyc_document_urls(kyc)
+    if not urls:
+        logger.warning(f"[onboarding/v2/send-documents] No documents found reference_id={payload.reference_id}")
+        raise HTTPException(status_code=400, detail="No document URLs found for this onboarding session")
+
+    ubos = db.query(models.UserKycUbo).filter(models.UserKycUbo.kyc_id == kyc.id).all()
+    attachments, failed_fields = await _build_compliance_attachments(urls)
+    if not attachments:
+        logger.warning(
+            f"[onboarding/v2/send-documents] No attachments could be prepared reference_id={payload.reference_id}, failed_fields={failed_fields}"
+        )
+        raise HTTPException(status_code=400, detail="Unable to prepare document attachments from saved URLs")
+
+    try:
+        send_email(
+            template=None,
+            subject=f"V2 Onboarding Documents Only - {kyc.company_name or kyc.reference_id}",
+            to=[V2_COMPLIANCE_EMAIL],
+            cc=ONBOARDING_COMPLIANCE_CC,
+            context={},
+            from_email="onboarding@noreply.vaulta.digital",
+            attachments=attachments,
+            html=_submission_email_html(kyc, ubos, len(attachments), failed_fields),
+        )
+        logger.info(
+            f"[onboarding/v2/send-documents] Compliance email sent reference_id={payload.reference_id}, attachments={len(attachments)}, failed_fields={failed_fields}"
+        )
+    except Exception as exc:
+        logger.error(f"[onboarding/v2/send-documents] Failed to send compliance email reference_id={payload.reference_id}: {exc}")
+        raise HTTPException(status_code=502, detail="Failed to send documents to compliance")
+
+    return {
+        "message": "Documents sent to compliance",
+        "reference_id": kyc.reference_id,
+        "documents_found": len(urls),
+        "attachments_sent": len(attachments),
+        "attachment_failures": failed_fields,
+        "compliance_recipient": V2_COMPLIANCE_EMAIL,
     }
 
 
@@ -2088,6 +2139,226 @@ class PaymentResponse(BaseModel):
     fees: List[PaymentFee]
     created_at: str
 
+
+class KycBasicInfoResponse(BaseModel):
+    full_name: Optional[str] = None
+    email: Optional[str] = None
+    company_name: Optional[str] = None
+    phone: Optional[str] = None
+
+
+class KycUboResponse(BaseModel):
+    ubo_reference_id: Optional[str] = None
+    full_name: Optional[str] = None
+    email: Optional[str] = None
+    phone: Optional[str] = None
+    ownership_percentage: Optional[float] = None
+    status: Optional[str] = None
+    persona_inquiry_id: Optional[str] = None
+    verified_at: Optional[str] = None
+
+
+class KycDocumentReviewStatusResponse(BaseModel):
+    document_field: str
+    status: str
+    reason: Optional[str] = None
+    reviewed_by: Optional[str] = None
+    reviewed_at: Optional[str] = None
+
+
+class KycEntryResponse(BaseModel):
+    reference_id: str
+    full_name: Optional[str] = None
+    company_name: Optional[str] = None
+    email: Optional[str] = None
+    phone: Optional[str] = None
+    persona_status: Optional[str] = None
+    persona_inquiry_id: Optional[str] = None
+    verified_at: Optional[str] = None
+    documents_uploaded: int
+    ubo_count: int
+    ubo_verified_count: int
+
+
+class KycDetailResponse(BaseModel):
+    reference_id: str
+    status: Optional[str] = None
+    persona_inquiry_id: Optional[str] = None
+    user_id: Optional[str] = None
+    verified_at: Optional[str] = None
+    basic_info: KycBasicInfoResponse
+    ubos: List[KycUboResponse]
+    ubo_count: int
+    ubo_verified_count: int
+    documents: Dict[str, str]
+    documents_uploaded: int
+    review_statuses: Dict[str, KycDocumentReviewStatusResponse] = Field(default_factory=dict)
+
+
+class AdminKycListResponse(BaseModel):
+    items: List[KycEntryResponse]
+    total: int
+    page: int
+    page_size: int
+    has_next: bool
+
+
+class KycComplianceSendRequest(BaseModel):
+    reference_id: str
+    inquiry_id: Optional[str] = None
+
+
+class KycComplianceSendResponse(BaseModel):
+    message: str
+    reference_id: str
+    email: Optional[str] = None
+    documents_uploaded: int
+    attachments_sent: int
+    attachment_failures: List[str]
+    compliance_recipient: str
+
+
+class KycDocumentReviewRequest(BaseModel):
+    document_field: str
+    status: str
+    reason: Optional[str] = None
+
+
+class KycDocumentReviewActionResponse(BaseModel):
+    reference_id: str
+    document_field: str
+    status: str
+    reason: Optional[str] = None
+    reviewed_by: str
+    reviewed_at: str
+
+
+class KycDocumentReviewListResponse(BaseModel):
+    reference_id: str
+    review_statuses: Dict[str, KycDocumentReviewStatusResponse]
+
+
+DOCUMENT_REVIEW_ALLOWED_STATUSES = {"approved", "declined"}
+
+
+def _serialize_kyc_entry(kyc: models.UserKyc, db: Session) -> KycEntryResponse:
+    ubos = db.query(models.UserKycUbo).filter(models.UserKycUbo.kyc_id == kyc.id).all()
+    urls = _extract_kyc_document_urls(kyc)
+
+    return KycEntryResponse(
+        reference_id=kyc.reference_id,
+        full_name=kyc.full_name,
+        company_name=kyc.company_name,
+        email=kyc.email,
+        phone=kyc.phone,
+        persona_status=kyc.persona_status,
+        persona_inquiry_id=kyc.persona_inquiry_id,
+        verified_at=kyc.verified_at.isoformat() if kyc.verified_at else None,
+        documents_uploaded=len(urls),
+        ubo_count=len(ubos),
+        ubo_verified_count=len([u for u in ubos if u.persona_status in ALLOWED_PERSONA_STATUSES]),
+    )
+
+
+def _format_document_label(field_name: str) -> str:
+    return field_name.replace("_", " ").title()
+
+
+def _build_kyc_document_review_statuses(kyc: models.UserKyc, db: Session) -> Dict[str, KycDocumentReviewStatusResponse]:
+    reviews = (
+        db.query(models.UserKycDocumentReview)
+        .filter(models.UserKycDocumentReview.kyc_id == kyc.id)
+        .all()
+    )
+    review_map = {review.document_field: review for review in reviews}
+
+    review_statuses: Dict[str, KycDocumentReviewStatusResponse] = {}
+    for field_name in V2_ALLOWED_DOCUMENT_FIELDS:
+        file_url = getattr(kyc, field_name)
+        review = review_map.get(field_name)
+
+        if review:
+            review_statuses[field_name] = KycDocumentReviewStatusResponse(
+                document_field=field_name,
+                status=review.status,
+                reason=review.reason,
+                reviewed_by=review.reviewed_by,
+                reviewed_at=review.reviewed_at.isoformat() if review.reviewed_at else None,
+            )
+            continue
+
+        if file_url:
+            review_statuses[field_name] = KycDocumentReviewStatusResponse(
+                document_field=field_name,
+                status="pending",
+                reason=None,
+                reviewed_by=None,
+                reviewed_at=None,
+            )
+
+    return review_statuses
+
+
+def _send_declined_documents_email(
+    *,
+    kyc: models.UserKyc,
+    declined_fields: List[str],
+    reason: Optional[str],
+) -> None:
+    if not kyc.email or not declined_fields:
+        return
+
+    send_email(
+        template="kyc_declined_reupload.html",
+        subject=f"KYC Document Re-upload Required - {kyc.reference_id}",
+        to=[kyc.email],
+        context={
+            "name": kyc.full_name or "there",
+            "reference_id": kyc.reference_id,
+            "company_name": kyc.company_name or "N/A",
+            "declined_documents": [_format_document_label(field_name) for field_name in declined_fields],
+            "reason": reason or "",
+        },
+        from_email="onboarding@noreply.vaulta.digital",
+    )
+
+
+def _serialize_kyc_detail(kyc: models.UserKyc, db: Session) -> KycDetailResponse:
+    ubos = db.query(models.UserKycUbo).filter(models.UserKycUbo.kyc_id == kyc.id).all()
+    urls = _extract_kyc_document_urls(kyc)
+
+    return KycDetailResponse(
+        reference_id=kyc.reference_id,
+        status=kyc.persona_status,
+        persona_inquiry_id=kyc.persona_inquiry_id,
+        user_id=kyc.user_id,
+        verified_at=kyc.verified_at.isoformat() if kyc.verified_at else None,
+        basic_info=KycBasicInfoResponse(
+            full_name=kyc.full_name,
+            email=kyc.email,
+            company_name=kyc.company_name,
+            phone=kyc.phone,
+        ),
+        ubos=[
+            KycUboResponse(
+                ubo_reference_id=u.ubo_reference_id,
+                full_name=u.full_name,
+                email=u.email,
+                phone=u.phone,
+                ownership_percentage=u.ownership_percentage,
+                status=u.persona_status,
+                persona_inquiry_id=u.persona_inquiry_id,
+                verified_at=u.verified_at.isoformat() if u.verified_at else None,
+            )
+            for u in ubos
+        ],
+        ubo_count=len(ubos),
+        ubo_verified_count=len([u for u in ubos if u.persona_status in ALLOWED_PERSONA_STATUSES]),
+        documents=urls,
+        documents_uploaded=len(urls),
+        review_statuses=_build_kyc_document_review_statuses(kyc, db),
+    )
+
 @app.post("/api/v1/create_account", response_model=AccountResponse, status_code=status.HTTP_201_CREATED)
 async def create_account(
     data: CreateAccountRequest,
@@ -2232,6 +2503,289 @@ async def update_account(
         balances=account.balances or {},
         metadata=account.account_metadata
     )
+
+
+@app.get("/api/v1/kyc", response_model=List[KycEntryResponse])
+async def get_all_kyc_entries(token: str = Depends(oauth2_scheme), db: Session = Depends(get_db)):
+    try:
+        payload = jwt.decode(token, os.getenv("JWT_SECRET", "your_jwt_secret"), algorithms=["HS256"])
+        user_id = payload.get("sub")
+        if not user_id:
+            raise HTTPException(status_code=401, detail="Invalid token")
+    except jwt.PyJWTError:
+        raise HTTPException(status_code=401, detail="Invalid token")
+
+    logger_accounts.info(f"[kyc/list] Loading KYC entries for user_id={user_id}")
+    entries = (
+        db.query(models.UserKyc)
+        .filter(models.UserKyc.user_id == user_id)
+        .order_by(models.UserKyc.created_at.desc())
+        .all()
+    )
+    return [_serialize_kyc_entry(kyc, db) for kyc in entries]
+
+
+@app.get("/api/v1/kyc/{reference_id}", response_model=KycDetailResponse)
+async def get_kyc_entry_by_reference(
+    reference_id: str,
+    token: str = Depends(oauth2_scheme),
+    db: Session = Depends(get_db),
+):
+    try:
+        payload = jwt.decode(token, os.getenv("JWT_SECRET", "your_jwt_secret"), algorithms=["HS256"])
+        user_id = payload.get("sub")
+        if not user_id:
+            raise HTTPException(status_code=401, detail="Invalid token")
+    except jwt.PyJWTError:
+        raise HTTPException(status_code=401, detail="Invalid token")
+
+    user = db.query(models.User).filter(models.User.id == user_id).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    kyc = db.query(models.UserKyc).filter(models.UserKyc.reference_id == reference_id).first()
+    if not kyc:
+        raise HTTPException(status_code=404, detail="KYC entry not found")
+
+    is_admin = (user.role or "").lower() == "admin"
+    if not is_admin and kyc.user_id != user_id:
+        raise HTTPException(status_code=403, detail="Forbidden")
+
+    logger_accounts.info(f"[kyc/detail] Returning KYC detail reference_id={reference_id} for user_id={user_id}")
+    return _serialize_kyc_detail(kyc, db)
+
+
+@app.get("/api/v1/admin/kyc", response_model=AdminKycListResponse)
+async def get_admin_kyc_entries(
+    page: int = Query(1, ge=1),
+    page_size: int = Query(20, ge=1, le=100),
+    persona_status: Optional[str] = Query(None),
+    email: Optional[str] = Query(None),
+    reference_id: Optional[str] = Query(None),
+    token: str = Depends(oauth2_scheme),
+    db: Session = Depends(get_db),
+):
+    try:
+        payload = jwt.decode(token, os.getenv("JWT_SECRET", "your_jwt_secret"), algorithms=["HS256"])
+        user_id = payload.get("sub")
+        if not user_id:
+            raise HTTPException(status_code=401, detail="Invalid token")
+    except jwt.PyJWTError:
+        raise HTTPException(status_code=401, detail="Invalid token")
+
+    user = db.query(models.User).filter(models.User.id == user_id).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    if (user.role or "").lower() != "admin":
+        raise HTTPException(status_code=403, detail="Admin access required")
+
+    query = db.query(models.UserKyc)
+    if persona_status:
+        query = query.filter(models.UserKyc.persona_status == persona_status)
+    if email:
+        query = query.filter(models.UserKyc.email.ilike(f"%{email}%"))
+    if reference_id:
+        query = query.filter(models.UserKyc.reference_id.ilike(f"%{reference_id}%"))
+
+    total = query.count()
+    entries = (
+        query.order_by(models.UserKyc.created_at.desc())
+        .offset((page - 1) * page_size)
+        .limit(page_size)
+        .all()
+    )
+
+    logger_accounts.info(
+        f"[kyc/admin-list] user_id={user_id}, total={total}, page={page}, page_size={page_size}, returned={len(entries)}"
+    )
+    return AdminKycListResponse(
+        items=[_serialize_kyc_entry(kyc, db) for kyc in entries],
+        total=total,
+        page=page,
+        page_size=page_size,
+        has_next=(page * page_size) < total,
+    )
+
+
+@app.post("/api/v1/admin/kyc/send-to-compliance", response_model=KycComplianceSendResponse)
+async def send_admin_kyc_to_compliance(
+    data: KycComplianceSendRequest,
+    token: str = Depends(oauth2_scheme),
+    db: Session = Depends(get_db),
+):
+    try:
+        payload = jwt.decode(token, os.getenv("JWT_SECRET", "your_jwt_secret"), algorithms=["HS256"])
+        user_id = payload.get("sub")
+        if not user_id:
+            raise HTTPException(status_code=401, detail="Invalid token")
+    except jwt.PyJWTError:
+        raise HTTPException(status_code=401, detail="Invalid token")
+
+    user = db.query(models.User).filter(models.User.id == user_id).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    if (user.role or "").lower() != "admin":
+        raise HTTPException(status_code=403, detail="Admin access required")
+
+    logger_accounts.info(
+        f"[kyc/admin-send-compliance] Triggered by user_id={user_id} for reference_id={data.reference_id}"
+    )
+    submit_response = await submit_v2_onboarding(
+        V2SubmitRequest(reference_id=data.reference_id, inquiry_id=data.inquiry_id),
+        db,
+    )
+
+    return KycComplianceSendResponse(
+        message=submit_response.get("message", "Onboarding submitted successfully"),
+        reference_id=submit_response.get("reference_id", data.reference_id),
+        email=submit_response.get("email"),
+        documents_uploaded=submit_response.get("documents_uploaded", 0),
+        attachments_sent=submit_response.get("attachments_sent", 0),
+        attachment_failures=submit_response.get("attachment_failures", []),
+        compliance_recipient=submit_response.get("compliance_recipient", V2_COMPLIANCE_EMAIL),
+    )
+
+
+@app.post("/api/v1/admin/kyc/{reference_id}/documents/review", response_model=KycDocumentReviewActionResponse)
+async def review_kyc_document(
+    reference_id: str,
+    data: KycDocumentReviewRequest,
+    token: str = Depends(oauth2_scheme),
+    db: Session = Depends(get_db),
+):
+    try:
+        payload = jwt.decode(token, os.getenv("JWT_SECRET", "your_jwt_secret"), algorithms=["HS256"])
+        user_id = payload.get("sub")
+        if not user_id:
+            raise HTTPException(status_code=401, detail="Invalid token")
+    except jwt.PyJWTError:
+        raise HTTPException(status_code=401, detail="Invalid token")
+
+    user = db.query(models.User).filter(models.User.id == user_id).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    if (user.role or "").lower() != "admin":
+        raise HTTPException(status_code=403, detail="Admin access required")
+
+    kyc = db.query(models.UserKyc).filter(models.UserKyc.reference_id == reference_id).first()
+    if not kyc:
+        raise HTTPException(status_code=404, detail="KYC entry not found")
+
+    field_name = data.document_field.strip()
+    if field_name not in V2_ALLOWED_DOCUMENT_FIELDS:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Invalid document field '{field_name}'. Allowed: {', '.join(V2_ALLOWED_DOCUMENT_FIELDS)}",
+        )
+
+    if not getattr(kyc, field_name):
+        raise HTTPException(status_code=400, detail=f"Document '{field_name}' is not uploaded yet")
+
+    review_status = data.status.strip().lower()
+    if review_status not in DOCUMENT_REVIEW_ALLOWED_STATUSES:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Invalid status '{data.status}'. Allowed: {', '.join(sorted(DOCUMENT_REVIEW_ALLOWED_STATUSES))}",
+        )
+
+    review_row = (
+        db.query(models.UserKycDocumentReview)
+        .filter(
+            models.UserKycDocumentReview.kyc_id == kyc.id,
+            models.UserKycDocumentReview.document_field == field_name,
+        )
+        .first()
+    )
+
+    reason = (data.reason or "").strip() or None
+    if review_row:
+        review_row.status = review_status
+        review_row.reason = reason if review_status == "declined" else None
+        review_row.reviewed_by = user_id
+        review_row.reviewed_at = datetime.now()
+    else:
+        review_row = models.UserKycDocumentReview(
+            kyc_id=kyc.id,
+            document_field=field_name,
+            status=review_status,
+            reason=reason if review_status == "declined" else None,
+            reviewed_by=user_id,
+            reviewed_at=datetime.now(),
+        )
+        db.add(review_row)
+
+    db.commit()
+    db.refresh(review_row)
+
+    logger_accounts.info(
+        f"[kyc/document-review] reference_id={reference_id}, field={field_name}, status={review_status}, reviewed_by={user_id}"
+    )
+
+    if review_status == "declined":
+        declined_reviews = (
+            db.query(models.UserKycDocumentReview)
+            .filter(
+                models.UserKycDocumentReview.kyc_id == kyc.id,
+                models.UserKycDocumentReview.status == "declined",
+            )
+            .all()
+        )
+        declined_fields = [review.document_field for review in declined_reviews]
+
+        try:
+            _send_declined_documents_email(
+                kyc=kyc,
+                declined_fields=declined_fields,
+                reason=reason,
+            )
+            logger_accounts.info(
+                f"[kyc/document-review] Decline email sent reference_id={reference_id}, to={kyc.email}, declined_fields={declined_fields}"
+            )
+        except Exception as exc:
+            logger_accounts.warning(
+                f"[kyc/document-review] Decline email failed reference_id={reference_id}, error={exc}"
+            )
+
+    return KycDocumentReviewActionResponse(
+        reference_id=reference_id,
+        document_field=review_row.document_field,
+        status=review_row.status,
+        reason=review_row.reason,
+        reviewed_by=review_row.reviewed_by or user_id,
+        reviewed_at=review_row.reviewed_at.isoformat() if review_row.reviewed_at else datetime.now().isoformat(),
+    )
+
+
+@app.get("/api/v1/admin/kyc/{reference_id}/documents/review-status", response_model=KycDocumentReviewListResponse)
+async def get_kyc_document_review_status(
+    reference_id: str,
+    token: str = Depends(oauth2_scheme),
+    db: Session = Depends(get_db),
+):
+    try:
+        payload = jwt.decode(token, os.getenv("JWT_SECRET", "your_jwt_secret"), algorithms=["HS256"])
+        user_id = payload.get("sub")
+        if not user_id:
+            raise HTTPException(status_code=401, detail="Invalid token")
+    except jwt.PyJWTError:
+        raise HTTPException(status_code=401, detail="Invalid token")
+
+    user = db.query(models.User).filter(models.User.id == user_id).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    if (user.role or "").lower() != "admin":
+        raise HTTPException(status_code=403, detail="Admin access required")
+
+    kyc = db.query(models.UserKyc).filter(models.UserKyc.reference_id == reference_id).first()
+    if not kyc:
+        raise HTTPException(status_code=404, detail="KYC entry not found")
+
+    return KycDocumentReviewListResponse(
+        reference_id=reference_id,
+        review_statuses=_build_kyc_document_review_statuses(kyc, db),
+    )
+
+
 @app.post("/api/v1/payments", response_model=PaymentResponse, status_code=status.HTTP_201_CREATED)
 async def create_payment(
     data: CreatePaymentRequest,

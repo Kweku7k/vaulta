@@ -1,0 +1,139 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>KYC Document Re-upload Required</title>
+  <style>
+    body {
+      margin: 0;
+      padding: 0;
+      background-color: #838383;
+      font-family: "Helvetica Neue", Helvetica, Arial, sans-serif;
+      color: #fff;
+    }
+
+    .container {
+      max-width: 500px;
+      margin: 0 auto;
+      padding: 60px 20px;
+      background-color: #000;
+    }
+
+    .logo {
+      display: flex;
+      align-items: center;
+      margin-bottom: 40px;
+    }
+
+    .logo img {
+      height: 30px;
+    }
+
+    h1 {
+      font-size: 34px;
+      margin-bottom: 25px;
+      font-weight: 900;
+      color: #fff;
+      line-height: 1.2;
+    }
+
+    p {
+      font-size: 16px;
+      margin-bottom: 18px;
+      line-height: 1.5;
+      color: #fff;
+    }
+
+    .card {
+      background: #111;
+      border-radius: 12px;
+      padding: 20px;
+      margin: 25px 0;
+      font-size: 14px;
+    }
+
+    .label {
+      color: #aaa;
+      font-size: 12px;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+      margin-bottom: 6px;
+    }
+
+    .value {
+      font-weight: 700;
+      font-size: 15px;
+      color: #fff;
+      word-break: break-word;
+    }
+
+    ul {
+      margin: 10px 0 0 20px;
+      padding: 0;
+    }
+
+    li {
+      margin-bottom: 8px;
+      color: #fff;
+    }
+
+    .highlight {
+      color: orange;
+      font-weight: 700;
+    }
+
+    .footer {
+      margin-top: 30px;
+      font-size: 10px;
+      color: #aaa;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="logo">
+      <img src="https://firebasestorage.googleapis.com/v0/b/myfirstproject-721e6.firebasestorage.app/o/VAULTA%20LOGO.png?alt=media&token=7e0ac92e-3009-4d61-8dc9-7bda435fe0c6" alt="Vaulta Logo" />
+    </div>
+
+    <h1>Document Re-upload Required</h1>
+
+    <p>Hello <strong>{{ name }}</strong>,</p>
+
+    <p>
+      Your KYC submission for <span class="highlight">{{ company_name }}</span> requires an update.
+      One or more documents were declined during admin review. Please re-upload the document(s) listed below.
+    </p>
+
+    <div class="card">
+      <div class="label">KYC Reference</div>
+      <div class="value">{{ reference_id }}</div>
+
+      <div class="label" style="margin-top: 18px;">Declined Documents</div>
+      <ul>
+        {% for doc in declined_documents %}
+        <li>{{ doc }}</li>
+        {% endfor %}
+      </ul>
+
+      {% if reason %}
+      <div class="label" style="margin-top: 18px;">Reviewer Note</div>
+      <div class="value">{{ reason }}</div>
+      {% endif %}
+    </div>
+
+    <p>
+      Please return to your onboarding flow and upload corrected document versions.
+    </p>
+
+    <p>
+      Thanks<br />
+      The Vaulta Digital Assets Team
+    </p>
+
+    <div class="footer">
+      Vaulta Digital Assets Ltd. All rights reserved.
+    </div>
+  </div>
+</body>
+</html>
