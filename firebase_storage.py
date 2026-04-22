@@ -1,7 +1,7 @@
 import os
 import uuid
 from datetime import datetime
-from urllib.parse import urlparse
+from urllib.parse import unquote, urlparse
 
 import firebase_admin
 import httpx
@@ -108,12 +108,36 @@ async def upload_documents(files: dict[str, UploadFile | None], folder: str = "o
 
 
 async def download_file_from_url(file_url: str, timeout_seconds: float = 20.0) -> tuple[str, bytes, str]:
-    """Download a file from a public URL and return (filename, bytes, content_type)."""
+    """Download a file URL and return (filename, bytes, content_type).
+
+    Tries Firebase admin-authenticated download first for storage.googleapis.com
+    URLs, then falls back to anonymous HTTP download.
+    """
     if not file_url:
         raise ValueError("Missing file URL")
 
     parsed = urlparse(file_url)
-    filename = os.path.basename(parsed.path) or f"document_{uuid.uuid4().hex[:8]}"
+    path_parts = [p for p in parsed.path.split("/") if p]
+    filename = unquote(path_parts[-1]) if path_parts else f"document_{uuid.uuid4().hex[:8]}"
+
+    # Try Firebase admin-authenticated fetch for private objects first.
+    if parsed.netloc == "storage.googleapis.com" and len(path_parts) >= 2:
+        bucket_name = path_parts[0]
+        blob_name = "/".join(path_parts[1:])
+        try:
+            _init_firebase()
+            bucket = storage.bucket(bucket_name)
+            blob = bucket.blob(blob_name)
+            content = blob.download_as_bytes()
+            content_type = blob.content_type or "application/octet-stream"
+            return filename, content, content_type
+        except Exception as firebase_exc:
+            logger.warning(
+                "Firebase authenticated download failed for bucket=%s blob=%s error=%s; falling back to HTTP",
+                bucket_name,
+                blob_name,
+                firebase_exc,
+            )
 
     async with httpx.AsyncClient(timeout=timeout_seconds) as client:
         response = await client.get(file_url)

@@ -331,7 +331,10 @@ async def _notify_saved_document_to_slack(
     field: str,
     file_url: str,
 ):
-    """Best-effort Slack notification for a newly saved onboarding document."""
+    """Best-effort Slack notification for a newly saved onboarding document.
+
+    This path is file-first: it uploads the actual document to Slack.
+    """
     base_message = (
         "📄 Onboarding document saved\n"
         f"Reference ID: {reference_id}\n"
@@ -357,7 +360,10 @@ async def _notify_saved_document_to_slack(
                 field,
                 slack_resp,
             )
-            send_slack_message("onboarding", f"{base_message}\nURL: {file_url}")
+            send_slack_message(
+                "onboarding",
+                f"⚠️ Document saved but Slack file upload failed.\n{base_message}\nFilename: {filename}",
+            )
         else:
             logger.info(
                 "[onboarding/v2/documents] Slack file uploaded reference_id=%s field=%s filename=%s",
@@ -367,12 +373,15 @@ async def _notify_saved_document_to_slack(
             )
     except Exception as exc:
         logger.warning(
-            "[onboarding/v2/documents] Slack notify fallback to message reference_id=%s field=%s error=%s",
+            "[onboarding/v2/documents] Slack file notify failed reference_id=%s field=%s error=%s",
             reference_id,
             field,
             exc,
         )
-        send_slack_message("onboarding", f"{base_message}\nURL: {file_url}")
+        send_slack_message(
+            "onboarding",
+            f"⚠️ Document saved but backend could not fetch/upload file to Slack.\n{base_message}",
+        )
 
 
 def _kyc_reference_email_html(reference_id: str, full_name: str | None = None) -> str:
