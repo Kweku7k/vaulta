@@ -145,6 +145,7 @@ class UserKyc(Base):
     company_address_proof = Column(String, nullable=True)
     regulatory_information = Column(String, nullable=True)
     source_of_funds = Column(String, nullable=True)
+    hidden = Column(Boolean, nullable=False, server_default="false", default=False)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
 

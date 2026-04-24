@@ -2178,6 +2178,7 @@ class KycEntryResponse(BaseModel):
     documents_uploaded: int
     ubo_count: int
     ubo_verified_count: int
+    hidden: bool = False
 
 
 class KycDetailResponse(BaseModel):
@@ -2186,6 +2187,7 @@ class KycDetailResponse(BaseModel):
     persona_inquiry_id: Optional[str] = None
     user_id: Optional[str] = None
     verified_at: Optional[str] = None
+    hidden: bool = False
     basic_info: KycBasicInfoResponse
     ubos: List[KycUboResponse]
     ubo_count: int
@@ -2257,6 +2259,7 @@ def _serialize_kyc_entry(kyc: models.UserKyc, db: Session) -> KycEntryResponse:
         documents_uploaded=len(urls),
         ubo_count=len(ubos),
         ubo_verified_count=len([u for u in ubos if u.persona_status in ALLOWED_PERSONA_STATUSES]),
+        hidden=kyc.hidden or False,
     )
 
 
@@ -2333,6 +2336,7 @@ def _serialize_kyc_detail(kyc: models.UserKyc, db: Session) -> KycDetailResponse
         persona_inquiry_id=kyc.persona_inquiry_id,
         user_id=kyc.user_id,
         verified_at=kyc.verified_at.isoformat() if kyc.verified_at else None,
+        hidden=kyc.hidden or False,
         basic_info=KycBasicInfoResponse(
             full_name=kyc.full_name,
             email=kyc.email,
@@ -2518,7 +2522,7 @@ async def get_all_kyc_entries(token: str = Depends(oauth2_scheme), db: Session =
     logger_accounts.info(f"[kyc/list] Loading KYC entries for user_id={user_id}")
     entries = (
         db.query(models.UserKyc)
-        .filter(models.UserKyc.user_id == user_id)
+        .filter(models.UserKyc.user_id == user_id, models.UserKyc.hidden == False)
         .order_by(models.UserKyc.created_at.desc())
         .all()
     )
@@ -2579,7 +2583,7 @@ async def get_admin_kyc_entries(
     if (user.role or "").lower() != "admin":
         raise HTTPException(status_code=403, detail="Admin access required")
 
-    query = db.query(models.UserKyc)
+    query = db.query(models.UserKyc).filter(models.UserKyc.hidden == False)
     if persona_status:
         query = query.filter(models.UserKyc.persona_status == persona_status)
     if email:
