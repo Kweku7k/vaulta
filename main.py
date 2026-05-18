@@ -958,6 +958,8 @@ async def get_v2_onboarding_resume(reference_id: str, db: Session = Depends(get_
             "email": kyc.email,
             "company_name": kyc.company_name,
             "phone": kyc.phone,
+            "pep_is_pep": kyc.pep_is_pep,
+            "pep_affiliation": kyc.pep_affiliation,
         },
         "ubos": [
             {
