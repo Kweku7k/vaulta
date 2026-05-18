@@ -33,6 +33,7 @@ from fastapi.security import OAuth2PasswordBearer
 
 from ovex_apis import create_quote, get_trade_history
 from ovex_apis import get_markets
+from etherscan_apis import get_etherscan_transactions
 from redis_client import r
 from fastapi import Query, File, UploadFile, Form
 from fastapi import Request
@@ -279,6 +280,8 @@ class V2BasicInfoRequest(BaseModel):
     email: EmailStr
     company_name: str
     phone: str
+    pep_is_pep: Optional[bool] = False
+    pep_affiliation: Optional[str] = ""
 
 
 class V2UboSaveRequest(BaseModel):
@@ -998,6 +1001,8 @@ async def save_v2_basic_info(payload: V2BasicInfoRequest, db: Session = Depends(
     kyc.email = str(payload.email)
     kyc.company_name = payload.company_name
     kyc.phone = payload.phone
+    kyc.pep_is_pep = payload.pep_is_pep
+    kyc.pep_affiliation = payload.pep_affiliation
     if not kyc.persona_status:
         kyc.persona_status = "pending"
 
@@ -2000,6 +2005,30 @@ async def get_all_transactions(user_id: str = Depends(get_authenticated_user_id)
     
     return result
 
+@app.get("/api/v1/etherscan/transactions")
+async def get_etherscan_transactions_route(
+    address: str = Query(...),
+    chainid: str = Query("1"),
+    page: int = Query(1, ge=1),
+    offset: int = Query(100, ge=1, le=10000),
+    startblock: int = Query(0, ge=0),
+    endblock: int = Query(999999999, ge=0),
+    sort: str = Query("desc", pattern="^(asc|desc)$"),
+):
+    if not settings.ETHERSCAN_API_KEY:
+        raise HTTPException(status_code=500, detail="Etherscan API key is not configured")
+
+    return await get_etherscan_transactions(
+        api_key=settings.ETHERSCAN_API_KEY,
+        address=address,
+        chainid=chainid,
+        page=page,
+        offset=offset,
+        startblock=startblock,
+        endblock=endblock,
+        sort=sort,
+    )
+
 @app.get("/api/v1/transactions/{transaction_id}")
 async def get_transaction(
     transaction_id: str,
@@ -2145,6 +2174,8 @@ class KycBasicInfoResponse(BaseModel):
     email: Optional[str] = None
     company_name: Optional[str] = None
     phone: Optional[str] = None
+    pep_is_pep: Optional[bool] = None
+    pep_affiliation: Optional[str] = None
 
 
 class KycUboResponse(BaseModel):
@@ -2342,6 +2373,8 @@ def _serialize_kyc_detail(kyc: models.UserKyc, db: Session) -> KycDetailResponse
             email=kyc.email,
             company_name=kyc.company_name,
             phone=kyc.phone,
+            pep_is_pep=kyc.pep_is_pep,
+            pep_affiliation=kyc.pep_affiliation,
         ),
         ubos=[
             KycUboResponse(

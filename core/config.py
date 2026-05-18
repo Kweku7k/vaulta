@@ -24,6 +24,7 @@ class Settings(BaseSettings):
     OVEX_API_KEY: Optional[str] = None
     JWT_SECRET: Optional[str] = None
     BRIDGE_LIVE_API_KEY: Optional[str] = None
+    ETHERSCAN_API_KEY: Optional[str] = None
     ENV: str = "DEV"
 
     # Firebase
