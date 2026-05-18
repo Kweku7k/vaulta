@@ -1761,6 +1761,8 @@ async def complete_onboarding(
     Email: {email}
     Persona Inquiry Id: {inquiry_id or 'Not required'}
     Phone: {phone}
+    PEP: {'Yes' if kyc.pep_is_pep else 'No'}
+    PEP Affiliation: {kyc.pep_affiliation or 'N/A'}
     Persona Status: {kyc.persona_status},
     Persona Inquiry_id: {kyc.persona_inquiry_id or 'Not required'},
 {persona_link_line}    UBO Count: {len(ubos)},
@@ -1787,6 +1789,8 @@ async def complete_onboarding(
   <li><strong>Company Name:</strong> {company_name or 'N/A'}</li>
   <li><strong>Email:</strong> {email}</li>
   <li><strong>Phone:</strong> {phone or 'N/A'}</li>
+  <li><strong>PEP:</strong> {'Yes' if kyc.pep_is_pep else 'No'}</li>
+  <li><strong>PEP Affiliation:</strong> {kyc.pep_affiliation or 'N/A'}</li>
 </ul>
 <p>Documents:</p>
 <ul>{doc_list_html}</ul>
