@@ -961,6 +961,7 @@ async def get_v2_onboarding_resume(reference_id: str, db: Session = Depends(get_
             "pep_is_pep": kyc.pep_is_pep,
             "pep_affiliation": kyc.pep_affiliation,
         },
+        "basic_info_payload": json.loads(kyc.basic_info_payload) if kyc.basic_info_payload else None,
         "ubos": [
             {
                 "ubo_reference_id": u.ubo_reference_id,
@@ -982,15 +983,20 @@ async def get_v2_onboarding_resume(reference_id: str, db: Session = Depends(get_
 
 
 @app.post("/api/v2/onboarding/basic-info")
-async def save_v2_basic_info(payload: V2BasicInfoRequest, db: Session = Depends(get_db)):
-    """Create or update stage-1 onboarding draft and email the KYC ID for resume."""
+async def save_v2_basic_info(payload: dict = Body(...), db: Session = Depends(get_db)):
+    """Create or update stage-1 onboarding draft and store raw basic-info payload for forward compatibility."""
+    if not isinstance(payload, dict):
+        raise HTTPException(status_code=400, detail="Request body must be a JSON object")
+
+    incoming_reference_id = payload.get("reference_id")
+    reference_id = str(incoming_reference_id).strip() if incoming_reference_id is not None else ""
     logger.info(
-        f"[onboarding/v2/basic-info] Request received reference_id={payload.reference_id}, email={payload.email}"
+        f"[onboarding/v2/basic-info] Request received reference_id={reference_id or None}, email={payload.get('email')}"
     )
+
     created = False
-    if payload.reference_id:
-        kyc = _get_kyc_by_reference_or_404(payload.reference_id, db)
-        reference_id = payload.reference_id
+    if reference_id:
+        kyc = _get_kyc_by_reference_or_404(reference_id, db)
         logger.info(f"[onboarding/v2/basic-info] Updating existing draft reference_id={reference_id}")
     else:
         reference_id = f"kyc_{uuid.uuid4().hex[:12]}"
@@ -999,12 +1005,21 @@ async def save_v2_basic_info(payload: V2BasicInfoRequest, db: Session = Depends(
         created = True
         logger.info(f"[onboarding/v2/basic-info] Created new draft reference_id={reference_id}")
 
-    kyc.full_name = payload.full_name
-    kyc.email = str(payload.email)
-    kyc.company_name = payload.company_name
-    kyc.phone = payload.phone
-    kyc.pep_is_pep = payload.pep_is_pep
-    kyc.pep_affiliation = payload.pep_affiliation
+    payload_to_store = dict(payload)
+    payload_to_store["reference_id"] = reference_id
+    payload_to_store["captured_at"] = datetime.now().isoformat()
+    kyc.basic_info_payload = json.dumps(payload_to_store)
+
+    kyc.full_name = payload.get("full_name")
+    email_val = payload.get("email")
+    kyc.email = str(email_val) if email_val else None
+    kyc.company_name = payload.get("company_name")
+    kyc.phone = payload.get("phone")
+    if "pep_is_pep" in payload:
+        kyc.pep_is_pep = payload.get("pep_is_pep")
+    if "pep_affiliation" in payload:
+        kyc.pep_affiliation = payload.get("pep_affiliation")
+
     if not kyc.persona_status:
         kyc.persona_status = "pending"
 
@@ -1013,23 +1028,24 @@ async def save_v2_basic_info(payload: V2BasicInfoRequest, db: Session = Depends(
     logger.info(f"[onboarding/v2/basic-info] Draft saved reference_id={reference_id}, created={created}")
 
     try:
-        send_email(
-            template=None,
-            subject=f"Your Vaulta KYC ID - {reference_id}",
-            to=[str(payload.email)],
-            context={},
-            from_email="onboarding@noreply.vaulta.digital",
-            html=_kyc_reference_email_html(reference_id=reference_id, full_name=payload.full_name),
-        )
-        logger.info(f"[onboarding/v2/basic-info] KYC ID email sent to {payload.email}")
+        if kyc.email:
+            send_email(
+                template=None,
+                subject=f"Your Vaulta KYC ID - {reference_id}",
+                to=[kyc.email],
+                context={},
+                from_email="onboarding@noreply.vaulta.digital",
+                html=_kyc_reference_email_html(reference_id=reference_id, full_name=kyc.full_name),
+            )
+            logger.info(f"[onboarding/v2/basic-info] KYC ID email sent to {kyc.email}")
     except Exception as exc:
-        logger.error(f"[onboarding/v2/basic-info] Failed to send KYC ID email for {payload.email}: {exc}")
+        logger.error(f"[onboarding/v2/basic-info] Failed to send KYC ID email for {kyc.email}: {exc}")
 
     return {
         "message": "Basic information saved",
         "reference_id": reference_id,
         "created": created,
-        "email": str(payload.email),
+        "email": kyc.email,
         "persona_template_id": settings.PERSONA_TEMPLATE_ID,
         "persona_environment": settings.PERSONA_ENVIRONMENT,
     }
@@ -2034,6 +2050,76 @@ async def get_etherscan_transactions_route(
         endblock=endblock,
         sort=sort,
     )
+
+@app.get("/api/v1/check-wallet")
+async def check_wallet(
+    address: str = Query(..., description="EVM wallet address to monitor"),
+    chainid: str = Query("1", description="Chain ID (1=mainnet, 11155111=Sepolia)"),
+):
+    if not settings.ETHERSCAN_API_KEY:
+        raise HTTPException(status_code=500, detail="Etherscan API key is not configured")
+
+    from etherscan_apis import validate_evm_address, ETHERSCAN_BASE_URL
+    validate_evm_address(address)
+
+    async with httpx.AsyncClient(timeout=30.0) as client:
+        try:
+            resp = await client.get(
+                ETHERSCAN_BASE_URL,
+                params={
+                    "apikey": settings.ETHERSCAN_API_KEY,
+                    "chainid": chainid,
+                    "module": "account",
+                    "action": "txlist",
+                    "address": address,
+                    "startblock": 0,
+                    "endblock": 999999999,
+                    "page": 1,
+                    "offset": 10,
+                    "sort": "desc",
+                },
+            )
+        except httpx.HTTPError as exc:
+            raise HTTPException(status_code=502, detail="Etherscan request failed") from exc
+
+    payload = resp.json()
+    normal_txs = payload["result"] if str(payload.get("status")) == "1" and isinstance(payload.get("result"), list) else []
+    address_lower = address.lower()
+    redis_key = f"wallet:last_seen_tx:{address_lower}"
+    last_seen = r.get(redis_key)
+
+    new_tx = None
+    for tx in normal_txs:
+        if tx.get("to", "").lower() == address_lower:
+            tx_hash = tx.get("hash")
+            if tx_hash == last_seen:
+                break
+            new_tx = tx
+            break
+
+    if new_tx:
+        tx_hash = new_tx["hash"]
+        try:
+            value_eth = int(new_tx.get("value", 0)) / 10**18
+        except (TypeError, ValueError):
+            value_eth = 0
+
+        explorer_base = (
+            "https://sepolia.etherscan.io" if chainid == "11155111" else "https://etherscan.io"
+        )
+        send_slack_message(
+            "rates",
+            f"🚨 Wallet Credited!\nAddress: {address}\nAmount: {value_eth} ETH\nFrom: {new_tx.get('from')}\nTx: {explorer_base}/tx/{tx_hash}",
+        )
+        r.set(redis_key, tx_hash)
+
+    return {
+        "status": "checked",
+        "address": address,
+        "new_transaction_found": new_tx is not None,
+        "last_seen_tx": r.get(redis_key),
+    }
+
 
 @app.get("/api/v1/transactions/{transaction_id}")
 async def get_transaction(
@@ -3495,3 +3581,4 @@ async def notify_slack(data: dict = Body(...)):
         return {"message": "Notification sent to Slack", "data": message}
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to send notification: {str(e)}")
+

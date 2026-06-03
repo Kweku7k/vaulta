@@ -1,4 +1,4 @@
-from sqlalchemy import Boolean, Column, ForeignKey, Integer, String, DateTime, Float, UniqueConstraint
+from sqlalchemy import Boolean, Column, ForeignKey, Integer, String, DateTime, Float, Text, UniqueConstraint
 from sqlalchemy.sql import func
 from database import Base
     
@@ -148,6 +148,7 @@ class UserKyc(Base):
     hidden = Column(Boolean, nullable=False, server_default="false", default=False)
     pep_is_pep = Column(Boolean, nullable=True, default=False)
     pep_affiliation = Column(String, nullable=True)
+    basic_info_payload = Column(Text, nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
 
