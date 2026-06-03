@@ -1006,6 +1006,7 @@ async def save_v2_basic_info(payload: dict = Body(...), db: Session = Depends(ge
 
     incoming_reference_id = payload.get("reference_id")
     reference_id = str(incoming_reference_id).strip() if incoming_reference_id is not None else ""
+    print(f"[onboarding/v2/basic-info] hit reference_id={reference_id or None}, email={payload.get('email')}")
     logger.info(
         f"[onboarding/v2/basic-info] Request received reference_id={reference_id or None}, email={payload.get('email')}"
     )
