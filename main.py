@@ -944,6 +944,29 @@ async def get_v2_onboarding_resume(reference_id: str, db: Session = Depends(get_
 
     ubos = db.query(models.UserKycUbo).filter(models.UserKycUbo.kyc_id == kyc.id).all()
     urls = _extract_kyc_document_urls(kyc)
+    payload_basic_info = {}
+    if kyc.basic_info_payload:
+        try:
+            parsed_payload = json.loads(kyc.basic_info_payload)
+            if isinstance(parsed_payload, dict):
+                payload_basic_info = {
+                    key: value
+                    for key, value in parsed_payload.items()
+                    if key not in {"reference_id", "captured_at"}
+                }
+        except Exception as exc:
+            logger.warning(f"[onboarding/v2/resume] Failed to parse basic_info_payload for reference_id={reference_id}: {exc}")
+
+    basic_info = {
+        "full_name": kyc.full_name,
+        "email": kyc.email,
+        "company_name": kyc.company_name,
+        "phone": kyc.phone,
+        "pep_is_pep": kyc.pep_is_pep,
+        "pep_affiliation": kyc.pep_affiliation,
+    }
+    basic_info.update(payload_basic_info)
+
     logger.info(
         f"[onboarding/v2/resume] Returning session snapshot reference_id={reference_id}, ubos={len(ubos)}, documents={len(urls)}"
     )
@@ -953,14 +976,7 @@ async def get_v2_onboarding_resume(reference_id: str, db: Session = Depends(get_
         "status": kyc.persona_status,
         "persona_template_id": settings.PERSONA_TEMPLATE_ID,
         "persona_environment": settings.PERSONA_ENVIRONMENT,
-        "basic_info": {
-            "full_name": kyc.full_name,
-            "email": kyc.email,
-            "company_name": kyc.company_name,
-            "phone": kyc.phone,
-            "pep_is_pep": kyc.pep_is_pep,
-            "pep_affiliation": kyc.pep_affiliation,
-        },
+        "basic_info": basic_info,
         "basic_info_payload": json.loads(kyc.basic_info_payload) if kyc.basic_info_payload else None,
         "ubos": [
             {
