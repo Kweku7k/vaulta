@@ -633,8 +633,8 @@ async def get_account(token: str = Depends(oauth2_scheme), db: Session = Depends
             },
             "currency_pair_2":{
                 "label":"Transactions",
-                "value":"1",
-                "subvalue":"1"
+                "value":"0",
+                "subvalue":"0"
             },
             "summary":
             [
