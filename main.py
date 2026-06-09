@@ -627,12 +627,12 @@ async def get_account(token: str = Depends(oauth2_scheme), db: Session = Depends
         "dashboard":{
             "wallet_balance":"0",
             "currency_pair_1":{
-                "label":"ASSETS",
+                "label":"Assets",
                 "value":"0",
                 "subvalue":"0"
             },
             "currency_pair_2":{
-                "label":"GHS",
+                "label":"Transactions",
                 "value":"1",
                 "subvalue":"1"
             },
