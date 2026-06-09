@@ -649,18 +649,18 @@ async def get_account(token: str = Depends(oauth2_scheme), db: Session = Depends
                 }
             ],
             "recent_transactions":[
-                {
-                    "name":"Received USDT",
-                    "date":"2024-06-01",
-                    "amount":"$1000",
-                    "status":"Completed"
-                },
-                {
-                    "name":"Sent GHS",
-                    "date":"2024-06-02",
-                    "amount":"GHS 500",
-                    "status":"Pending"
-                }
+                # {
+                #     "name":"Received USDT",
+                #     "date":"2024-06-01",
+                #     "amount":"$1000",
+                #     "status":"Completed"
+                # },
+                # {
+                #     "name":"Sent GHS",
+                #     "date":"2024-06-02",
+                #     "amount":"GHS 500",
+                #     "status":"Pending"
+                # }
             ]
         }
     }
