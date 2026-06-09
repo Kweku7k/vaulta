@@ -625,7 +625,7 @@ async def get_account(token: str = Depends(oauth2_scheme), db: Session = Depends
         "role": user.role,
         "phone": user.phone,
         "dashboard":{
-            "wallet_balance":"39",
+            "wallet_balance":"0",
             "currency_pair_1":{
                 "label":"USDT",
                 "value":"1",
