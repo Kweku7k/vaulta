@@ -405,10 +405,10 @@ def _submission_email_html(kyc: models.UserKyc, ubos: list[models.UserKycUbo], d
 
         documents = _extract_kyc_document_urls(kyc)
         document_list_html = "".join(
-                [
-                        f'<li><strong>{field.replace("_", " ").title()}:</strong> <a href="{url}">{url}</a></li>'
-                        for field, url in documents.items()
-                ]
+            [
+                f"<li><strong>{field.replace('_', ' ').title()}:</strong> Uploaded</li>"
+                for field in documents.keys()
+            ]
         )
         if not document_list_html:
                 document_list_html = "<li>None</li>"
@@ -488,11 +488,6 @@ def _submission_email_html(kyc: models.UserKyc, ubos: list[models.UserKycUbo], d
         {ubo_rows_html}
     </tbody>
 </table>
-
-<p><strong>Documents ({len(documents)})</strong></p>
-<ul>
-    {document_list_html}
-</ul>
 
 <p><strong>Attachment Summary</strong></p>
 <ul>
