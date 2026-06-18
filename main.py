@@ -333,6 +333,12 @@ def _extract_kyc_document_urls(kyc: models.UserKyc) -> dict[str, str]:
     }
 
 
+def _should_notify_onboarding_slack(email: str | None) -> bool:
+    if not email:
+        return True
+    return not email.strip().lower().endswith("@vaulta.digital")
+
+
 async def _notify_saved_document_to_slack(
     *,
     kyc: models.UserKyc,
@@ -352,6 +358,14 @@ async def _notify_saved_document_to_slack(
         f"Full Name: {kyc.full_name or 'N/A'}\n"
         f"Email: {kyc.email or 'N/A'}"
     )
+
+    if not _should_notify_onboarding_slack(kyc.email):
+        logger.info(
+            "[onboarding/v2/documents] Slack notification skipped for internal email reference_id=%s email=%s",
+            reference_id,
+            kyc.email,
+        )
+        return
 
     try:
         filename, file_bytes, content_type = await download_file_from_url(file_url)
@@ -496,6 +510,87 @@ def _submission_email_html(kyc: models.UserKyc, ubos: list[models.UserKycUbo], d
 </ul>
 {failed_html}
 """
+
+
+def _submission_slack_text(
+    *,
+    kyc: models.UserKyc,
+    ubos: list[models.UserKycUbo],
+    urls: dict[str, str],
+    prepared_attachments: int,
+    failed_fields: list[str],
+    event_title: str,
+) -> str:
+    persona_inquiry_url = (
+        f"https://app.withpersona.com/dashboard/inquiries/{kyc.persona_inquiry_id}"
+        if kyc.persona_inquiry_id
+        else None
+    )
+
+    basic_payload_text = "None"
+    if kyc.basic_info_payload:
+        try:
+            parsed_payload = json.loads(kyc.basic_info_payload)
+            basic_payload_text = json.dumps(parsed_payload, indent=2, default=str)
+        except Exception:
+            basic_payload_text = str(kyc.basic_info_payload)
+
+    ubo_lines = "\n".join(
+        [
+            (
+                f"- {u.full_name or 'N/A'} | Email: {u.email or 'N/A'} | Phone: {u.phone or 'N/A'} | "
+                f"Ownership: {(f'{u.ownership_percentage:g}%' if u.ownership_percentage is not None else 'N/A')} | "
+                f"Status: {u.persona_status or 'N/A'} | Inquiry: {u.persona_inquiry_id or 'N/A'} | "
+                f"Verified At: {u.verified_at.isoformat() if u.verified_at else 'N/A'}"
+            )
+            for u in ubos
+        ]
+    )
+    if not ubo_lines:
+        ubo_lines = "- None"
+
+    doc_lines = "\n".join(
+        [
+            f"- {field.replace('_', ' ').title()}: {url}"
+            for field, url in urls.items()
+        ]
+    )
+    if not doc_lines:
+        doc_lines = "- None"
+
+    failed_text = ", ".join(failed_fields) if failed_fields else "None"
+    persona_link_line = f"Persona Inquiry Link: <{persona_inquiry_url}|Open Inquiry>\n" if persona_inquiry_url else ""
+
+    return (
+        f"*{event_title}*\n"
+        "Core Profile\n"
+        f"- KYC ID: {kyc.reference_id}\n"
+        f"- Full Name: {kyc.full_name or 'N/A'}\n"
+        f"- Company Name: {kyc.company_name or 'N/A'}\n"
+        f"- Email: {kyc.email or 'N/A'}\n"
+        f"- Phone: {kyc.phone or 'N/A'}\n"
+        f"- Wallet: {kyc.wallet or 'N/A'}\n"
+        f"- PEP: {'Yes' if kyc.pep_is_pep else 'No'}\n"
+        f"- PEP Affiliation: {kyc.pep_affiliation or 'N/A'}\n"
+        f"- Persona Status: {kyc.persona_status or 'N/A'}\n"
+        f"- Persona Inquiry ID: {kyc.persona_inquiry_id or 'N/A'}\n"
+        f"{persona_link_line}"
+        f"- Verified At: {kyc.verified_at.isoformat() if kyc.verified_at else 'N/A'}\n"
+        "\n"
+        "Captured Basic Info Payload\n"
+        f"```{basic_payload_text}```\n"
+        "\n"
+        f"UBO Details ({len(ubos)})\n"
+        f"{ubo_lines}\n"
+        "\n"
+        f"Documents ({len(urls)})\n"
+        f"{doc_lines}\n"
+        "\n"
+        "Attachment Summary\n"
+        f"- Prepared attachments: {prepared_attachments}\n"
+        f"- Failed attachments: {len(failed_fields)}\n"
+        f"- Failed fields: {failed_text}"
+    )
 
 
 async def _build_compliance_attachments(urls: dict[str, str]) -> tuple[list[dict], list[str]]:
@@ -1354,6 +1449,29 @@ async def send_v2_documents(payload: V2SendDocumentsRequest, db: Session = Depen
         logger.error(f"[onboarding/v2/send-documents] Failed to send compliance email reference_id={payload.reference_id}: {exc}")
         raise HTTPException(status_code=502, detail="Failed to send documents to compliance")
 
+    if _should_notify_onboarding_slack(kyc.email):
+        try:
+            send_slack_message(
+                "onboarding",
+                _submission_slack_text(
+                    kyc=kyc,
+                    ubos=ubos,
+                    urls=urls,
+                    prepared_attachments=len(attachments),
+                    failed_fields=failed_fields,
+                    event_title="V2 Onboarding Documents Sent To Compliance",
+                ),
+            )
+            logger.info(
+                f"[onboarding/v2/send-documents] Slack summary sent reference_id={payload.reference_id}, attachments={len(attachments)}"
+            )
+        except Exception as exc:
+            logger.error(f"[onboarding/v2/send-documents] Failed to send Slack summary reference_id={payload.reference_id}: {exc}")
+    else:
+        logger.info(
+            f"[onboarding/v2/send-documents] Slack summary skipped for internal email reference_id={payload.reference_id}, email={kyc.email}"
+        )
+
     return {
         "message": "Documents sent to compliance",
         "reference_id": kyc.reference_id,
@@ -1465,6 +1583,29 @@ async def submit_v2_onboarding(payload: V2SubmitRequest, db: Session = Depends(g
         )
     except Exception as exc:
         logger.error(f"[onboarding/v2/submit] Failed to send compliance email: {exc}")
+
+    if _should_notify_onboarding_slack(kyc.email):
+        try:
+            send_slack_message(
+                "onboarding",
+                _submission_slack_text(
+                    kyc=kyc,
+                    ubos=ubos,
+                    urls=urls,
+                    prepared_attachments=len(attachments),
+                    failed_fields=failed_fields,
+                    event_title="New V2 Onboarding Submission",
+                ),
+            )
+            logger.info(
+                f"[onboarding/v2/submit] Slack summary sent reference_id={payload.reference_id}, attachments={len(attachments)}"
+            )
+        except Exception as exc:
+            logger.error(f"[onboarding/v2/submit] Failed to send Slack summary: {exc}")
+    else:
+        logger.info(
+            f"[onboarding/v2/submit] Slack summary skipped for internal email reference_id={payload.reference_id}, email={kyc.email}"
+        )
 
     return {
         "message": "Onboarding submitted successfully",
@@ -1859,26 +2000,27 @@ async def complete_onboarding(
     logger.info(f"[onboarding/complete] KYC record linked to user_id={user_id}")
 
     # 8. Send Slack notification with basic info (non-fatal)
-    try:
-        doc_links = "\n".join([f"    • <{url}|{name.replace('_', ' ').title()}>" for name, url in urls.items()]) if urls else "    • None"
-        persona_inquiry_url = (
-            f"https://app.withpersona.com/dashboard/inquiries/{kyc.persona_inquiry_id}"
-            if kyc.persona_inquiry_id
-            else None
-        )
+    if _should_notify_onboarding_slack(email):
+        try:
+            doc_links = "\n".join([f"    • <{url}|{name.replace('_', ' ').title()}>" for name, url in urls.items()]) if urls else "    • None"
+            persona_inquiry_url = (
+                f"https://app.withpersona.com/dashboard/inquiries/{kyc.persona_inquiry_id}"
+                if kyc.persona_inquiry_id
+                else None
+            )
 
-        ubo_lines = "\\n".join([
-            f"- {u.full_name} ({u.persona_status}, ownership: {(f'{u.ownership_percentage:g}%' if u.ownership_percentage is not None else 'N/A')})"
-            for u in ubos
-        ])
+            ubo_lines = "\\n".join([
+                f"- {u.full_name} ({u.persona_status}, ownership: {(f'{u.ownership_percentage:g}%' if u.ownership_percentage is not None else 'N/A')})"
+                for u in ubos
+            ])
 
-        persona_link_line = (
-            f"    Persona Inquiry Link: <{persona_inquiry_url}|Open Inquiry>\n"
-            if persona_inquiry_url
-            else ""
-        )
+            persona_link_line = (
+                f"    Persona Inquiry Link: <{persona_inquiry_url}|Open Inquiry>\n"
+                if persona_inquiry_url
+                else ""
+            )
 
-        message = f"""*New Onboarding*
+            message = f"""*New Onboarding*
     Full Name: {full_name or 'N/A'}
     Company Name: {company_name or 'N/A'}
     Email: {email}
@@ -1894,10 +2036,12 @@ async def complete_onboarding(
     UBO List:\n{ubo_lines}
     Documents ({len(urls)}):\n{doc_links}"""
 
-        send_slack_message("onboarding", message)
-        logger.info(f"[onboarding/complete] Slack notification sent for {email}")
-    except Exception as e:
-        logger.error(f"[onboarding/complete] Failed to send Slack notification (non-fatal): {e}")
+            send_slack_message("onboarding", message)
+            logger.info(f"[onboarding/complete] Slack notification sent for {email}")
+        except Exception as e:
+            logger.error(f"[onboarding/complete] Failed to send Slack notification (non-fatal): {e}")
+    else:
+        logger.info(f"[onboarding/complete] Slack notification skipped for internal email={email}")
 
         # 9. Email full onboarding details to compliance (non-fatal)
     if urls:
