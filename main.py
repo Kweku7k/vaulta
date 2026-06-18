@@ -282,6 +282,7 @@ class V2BasicInfoRequest(BaseModel):
     company_name: str
     phone: str
     wallet: Optional[str] = None
+    wallet_address: Optional[str] = None
     pep_is_pep: Optional[bool] = False
     pep_affiliation: Optional[str] = ""
 
@@ -1211,8 +1212,11 @@ async def save_v2_basic_info(payload: dict = Body(...), db: Session = Depends(ge
     kyc.email = str(email_val) if email_val else None
     kyc.company_name = payload.get("company_name")
     kyc.phone = payload.get("phone")
-    if "wallet" in payload:
-        kyc.wallet = payload.get("wallet")
+    wallet_value = payload.get("wallet")
+    if wallet_value is None:
+        wallet_value = payload.get("wallet_address")
+    if wallet_value is not None:
+        kyc.wallet = wallet_value
     if "pep_is_pep" in payload:
         kyc.pep_is_pep = payload.get("pep_is_pep")
     if "pep_affiliation" in payload:
