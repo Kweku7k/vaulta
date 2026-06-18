@@ -258,6 +258,7 @@ V2_ALLOWED_DOCUMENT_FIELDS = [
     "company_address_proof",
     "regulatory_information",
     "source_of_funds",
+    "aml_document",
 ]
 V2_COMPLIANCE_EMAIL = "compliance@vaulta.digital"
 ONBOARDING_COMPLIANCE_CC = ["muntala@vaulta.digital", "dev@vaulta.digital"]
@@ -280,6 +281,7 @@ class V2BasicInfoRequest(BaseModel):
     email: EmailStr
     company_name: str
     phone: str
+    wallet: Optional[str] = None
     pep_is_pep: Optional[bool] = False
     pep_affiliation: Optional[str] = ""
 
@@ -396,21 +398,106 @@ def _kyc_reference_email_html(reference_id: str, full_name: str | None = None) -
 
 
 def _submission_email_html(kyc: models.UserKyc, ubos: list[models.UserKycUbo], document_count: int, failed_fields: list[str]) -> str:
-    failed_html = ""
-    if failed_fields:
-        failed_items = "".join([f"<li>{f.replace('_', ' ').title()}</li>" for f in failed_fields])
-        failed_html = f"<p><strong>Documents that failed to attach:</strong></p><ul>{failed_items}</ul>"
+        failed_html = ""
+        if failed_fields:
+                failed_items = "".join([f"<li>{f.replace('_', ' ').title()}</li>" for f in failed_fields])
+                failed_html = f"<p><strong>Documents that failed to attach:</strong></p><ul>{failed_items}</ul>"
 
-    return f"""
-<p>A new v2 onboarding submission has been received.</p>
+        documents = _extract_kyc_document_urls(kyc)
+        document_list_html = "".join(
+                [
+                        f'<li><strong>{field.replace("_", " ").title()}:</strong> <a href="{url}">{url}</a></li>'
+                        for field, url in documents.items()
+                ]
+        )
+        if not document_list_html:
+                document_list_html = "<li>None</li>"
+
+        ubo_rows_html = "".join(
+                [
+                        (
+                                "<tr>"
+                                f"<td>{ubo.full_name or 'N/A'}</td>"
+                                f"<td>{ubo.email or 'N/A'}</td>"
+                                f"<td>{ubo.phone or 'N/A'}</td>"
+                                f"<td>{ubo.ownership_percentage if ubo.ownership_percentage is not None else 'N/A'}</td>"
+                                f"<td>{ubo.persona_status or 'N/A'}</td>"
+                                f"<td>{ubo.persona_inquiry_id or 'N/A'}</td>"
+                                f"<td>{ubo.verified_at.isoformat() if ubo.verified_at else 'N/A'}</td>"
+                                "</tr>"
+                        )
+                        for ubo in ubos
+                ]
+        )
+        if not ubo_rows_html:
+                ubo_rows_html = "<tr><td colspan='7'>No UBO records found</td></tr>"
+
+        basic_payload_html = "<li>None</li>"
+        if kyc.basic_info_payload:
+                try:
+                        parsed_payload = json.loads(kyc.basic_info_payload)
+                        if isinstance(parsed_payload, dict):
+                                basic_payload_html = "".join(
+                                        [
+                                                f"<li><strong>{k.replace('_', ' ').title()}:</strong> {v if v is not None else 'N/A'}</li>"
+                                                for k, v in parsed_payload.items()
+                                        ]
+                                )
+                        else:
+                                basic_payload_html = f"<li><pre>{json.dumps(parsed_payload, indent=2)}</pre></li>"
+                except Exception:
+                        basic_payload_html = f"<li><pre>{kyc.basic_info_payload}</pre></li>"
+
+        return f"""
+<p>A new onboarding submission has been received.</p>
+
+<p><strong>Core Profile</strong></p>
 <ul>
-  <li><strong>KYC ID:</strong> {kyc.reference_id}</li>
-  <li><strong>Full Name:</strong> {kyc.full_name or 'N/A'}</li>
-  <li><strong>Company Name:</strong> {kyc.company_name or 'N/A'}</li>
-  <li><strong>Email:</strong> {kyc.email or 'N/A'}</li>
-  <li><strong>Phone:</strong> {kyc.phone or 'N/A'}</li>
-  <li><strong>UBO Count:</strong> {len(ubos)}</li>
-  <li><strong>Attached Documents:</strong> {document_count}</li>
+    <li><strong>KYC ID:</strong> {kyc.reference_id}</li>
+    <li><strong>Full Name:</strong> {kyc.full_name or 'N/A'}</li>
+    <li><strong>Company Name:</strong> {kyc.company_name or 'N/A'}</li>
+    <li><strong>Email:</strong> {kyc.email or 'N/A'}</li>
+    <li><strong>Phone:</strong> {kyc.phone or 'N/A'}</li>
+    <li><strong>Wallet:</strong> {kyc.wallet or 'N/A'}</li>
+    <li><strong>PEP:</strong> {'Yes' if kyc.pep_is_pep else 'No'}</li>
+    <li><strong>PEP Affiliation:</strong> {kyc.pep_affiliation or 'N/A'}</li>
+    <li><strong>Persona Status:</strong> {kyc.persona_status or 'N/A'}</li>
+    <li><strong>Persona Inquiry ID:</strong> {kyc.persona_inquiry_id or 'N/A'}</li>
+    <li><strong>Verified At:</strong> {kyc.verified_at.isoformat() if kyc.verified_at else 'N/A'}</li>
+</ul>
+
+<p><strong>Captured Basic Info Payload</strong></p>
+<ul>
+    {basic_payload_html}
+</ul>
+
+<p><strong>UBO Details ({len(ubos)})</strong></p>
+<table border="1" cellpadding="6" cellspacing="0" style="border-collapse: collapse; width: 100%;">
+    <thead>
+        <tr>
+            <th>Full Name</th>
+            <th>Email</th>
+            <th>Phone</th>
+            <th>Ownership %</th>
+            <th>Status</th>
+            <th>Persona Inquiry ID</th>
+            <th>Verified At</th>
+        </tr>
+    </thead>
+    <tbody>
+        {ubo_rows_html}
+    </tbody>
+</table>
+
+<p><strong>Documents ({len(documents)})</strong></p>
+<ul>
+    {document_list_html}
+</ul>
+
+<p><strong>Attachment Summary</strong></p>
+<ul>
+    <li><strong>Prepared attachments:</strong> {document_count}</li>
+    <li><strong>Failed attachments:</strong> {len(failed_fields)}</li>
 </ul>
 {failed_html}
 """
@@ -888,6 +975,7 @@ async def get_onboarding_status(reference_id: str, db: Session = Depends(get_db)
         "certificate_of_incorporation", "memorandum_and_articles",
         "ubos_schedule", "company_profile", "id_documents",
         "company_address_proof", "regulatory_information", "source_of_funds",
+        "aml_document",
     ]
     documents = {f: getattr(kyc, f) for f in doc_fields if getattr(kyc, f)}
     ubos = db.query(models.UserKycUbo).filter(models.UserKycUbo.kyc_id == kyc.id).all()
@@ -962,6 +1050,7 @@ async def get_v2_onboarding_resume(reference_id: str, db: Session = Depends(get_
         "email": kyc.email,
         "company_name": kyc.company_name,
         "phone": kyc.phone,
+        "wallet": kyc.wallet,
         "pep_is_pep": kyc.pep_is_pep,
         "pep_affiliation": kyc.pep_affiliation,
     }
@@ -1032,6 +1121,8 @@ async def save_v2_basic_info(payload: dict = Body(...), db: Session = Depends(ge
     kyc.email = str(email_val) if email_val else None
     kyc.company_name = payload.get("company_name")
     kyc.phone = payload.get("phone")
+    if "wallet" in payload:
+        kyc.wallet = payload.get("wallet")
     if "pep_is_pep" in payload:
         kyc.pep_is_pep = payload.get("pep_is_pep")
     if "pep_affiliation" in payload:
@@ -1644,6 +1735,7 @@ async def complete_onboarding(
     company_name: Optional[str] = Form(None),
     email: str = Form(...),
     phone: str = Form(...),
+    wallet: Optional[str] = Form(None),
     certificate_of_incorporation: Optional[str] = Form(None),
     memorandum_and_articles: Optional[str] = Form(None),
     ubos_schedule: Optional[str] = Form(None),
@@ -1652,6 +1744,7 @@ async def complete_onboarding(
     company_address_proof: Optional[str] = Form(None),
     regulatory_information: Optional[str] = Form(None),
     source_of_funds: Optional[str] = Form(None),
+    aml_document: Optional[str] = Form(None),
     db: Session = Depends(get_db),
 ):
     """
@@ -1737,6 +1830,7 @@ async def complete_onboarding(
         "company_address_proof": company_address_proof,
         "regulatory_information": regulatory_information,
         "source_of_funds": source_of_funds,
+        "aml_document": aml_document,
     }
     urls: dict[str, str] = {k: v for k, v in doc_fields.items() if v}
     logger.info(f"[onboarding/complete] Document URLs provided: {list(urls.keys())}")
@@ -1747,6 +1841,7 @@ async def complete_onboarding(
     kyc.company_name = company_name
     kyc.email = email
     kyc.phone = phone
+    kyc.wallet = wallet
     kyc.persona_inquiry_id = inquiry_id
     kyc.persona_status = persona_status
     kyc.verified_at = datetime.now()
@@ -1794,6 +1889,7 @@ async def complete_onboarding(
     Email: {email}
     Persona Inquiry Id: {inquiry_id or 'Not required'}
     Phone: {phone}
+        Wallet: {wallet or 'N/A'}
     PEP: {'Yes' if kyc.pep_is_pep else 'No'}
     PEP Affiliation: {kyc.pep_affiliation or 'N/A'}
     Persona Status: {kyc.persona_status},
@@ -1808,26 +1904,10 @@ async def complete_onboarding(
     except Exception as e:
         logger.error(f"[onboarding/complete] Failed to send Slack notification (non-fatal): {e}")
 
-    # 9. Email document links to compliance (non-fatal)
+        # 9. Email full onboarding details to compliance (non-fatal)
     if urls:
         try:
-            doc_list_html = "".join(
-                f'<li><a href="{url}">{name.replace("_", " ").title()}</a></li>'
-                for name, url in urls.items()
-            )
-            compliance_html = f"""
-<p>A new onboarding submission has been received.</p>
-<ul>
-  <li><strong>Full Name:</strong> {full_name or 'N/A'}</li>
-  <li><strong>Company Name:</strong> {company_name or 'N/A'}</li>
-  <li><strong>Email:</strong> {email}</li>
-  <li><strong>Phone:</strong> {phone or 'N/A'}</li>
-  <li><strong>PEP:</strong> {'Yes' if kyc.pep_is_pep else 'No'}</li>
-  <li><strong>PEP Affiliation:</strong> {kyc.pep_affiliation or 'N/A'}</li>
-</ul>
-<p>Documents:</p>
-<ul>{doc_list_html}</ul>
-"""
+            compliance_html = _submission_email_html(kyc, ubos, len(urls), [])
             send_email(
                 template=None,
                 subject=f"New Onboarding Documents — {company_name or full_name or email}",
@@ -2283,6 +2363,7 @@ class KycBasicInfoResponse(BaseModel):
     email: Optional[str] = None
     company_name: Optional[str] = None
     phone: Optional[str] = None
+    wallet: Optional[str] = None
     pep_is_pep: Optional[bool] = None
     pep_affiliation: Optional[str] = None
 
@@ -2482,6 +2563,7 @@ def _serialize_kyc_detail(kyc: models.UserKyc, db: Session) -> KycDetailResponse
             email=kyc.email,
             company_name=kyc.company_name,
             phone=kyc.phone,
+            wallet=kyc.wallet,
             pep_is_pep=kyc.pep_is_pep,
             pep_affiliation=kyc.pep_affiliation,
         ),
